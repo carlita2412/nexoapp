@@ -35,7 +35,7 @@ class NecesidadSerializer(serializers.ModelSerializer):
         model = Necesidad
         fields = "__all__"
 
-
+#un comen
 class DonacionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Donacion
