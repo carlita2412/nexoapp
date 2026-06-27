@@ -1,7 +1,7 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
-
+from django.utils.dateparse import parse_datetime
 from .models import (
     Asignacion,
     Catalogo,
@@ -21,9 +21,11 @@ from .serializers import (
     NecesidadSerializer,
     OrganizacionSerializer,
     ClaimSerializer,
+    SyncPushSerializer,
 )
 from .sync.matching import obtener_candidatos_para_necesidad
 from .sync.arbitraje import ClaimError, reclamar_necesidad
+from .sync.procesador import obtener_deltas, procesar_lote_sync
 @api_view(["GET"])
 def salud(request):
     return Response(
@@ -33,7 +35,23 @@ def salud(request):
             "version": "v1",
         }
     )
+@api_view(["GET", "POST"])
+def sync(request):
+    if request.method == "GET":
+        desde = request.query_params.get("desde")
+        cursor = parse_datetime(desde) if desde else None
 
+        data = obtener_deltas(desde=cursor)
+
+        return Response(data)
+
+    serializer = SyncPushSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    eventos = serializer.validated_data["eventos"]
+    resultado = procesar_lote_sync(eventos)
+
+    return Response(resultado, status=status.HTTP_200_OK)
 
 class OrganizacionViewSet(viewsets.ModelViewSet):
     queryset = Organizacion.objects.all().order_by("nombre")

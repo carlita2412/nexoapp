@@ -10,6 +10,7 @@ from .views import (
     NecesidadViewSet,
     OrganizacionViewSet,
     salud,
+    sync,
 )
 
 router = DefaultRouter()
@@ -24,4 +25,5 @@ router.register(r"envios", EnvioViewSet, basename="envio")
 urlpatterns = [
     path("salud/", salud, name="salud"),
     path("", include(router.urls)),
+    path("sync/", sync, name="sync"),
 ]

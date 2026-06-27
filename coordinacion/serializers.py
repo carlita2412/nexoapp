@@ -68,3 +68,13 @@ class ClaimSerializer(serializers.Serializer):
     donacion_id = serializers.UUIDField()
     cantidad_asignada = serializers.IntegerField(min_value=1)
     organizacion_responsable_id = serializers.UUIDField()
+    
+class EventoSyncSerializer(serializers.Serializer):
+    idempotency_key = serializers.UUIDField()
+    client_timestamp = serializers.DateTimeField(required=False)
+    entity = serializers.CharField()
+    payload = serializers.DictField()
+
+
+class SyncPushSerializer(serializers.Serializer):
+    eventos = EventoSyncSerializer(many=True)
