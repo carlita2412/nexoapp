@@ -1,7 +1,14 @@
 from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.utils.dateparse import parse_datetime
+from .permisos import (
+    SOLO_COORDINACION,
+    TODOS_OPERATIVOS,
+    EsCoordinacionParaEscribir,
+    puede_escribir,
+)
 from .models import (
     Asignacion,
     Catalogo,
@@ -26,7 +33,10 @@ from .serializers import (
 from .sync.matching import obtener_candidatos_para_necesidad
 from .sync.arbitraje import ClaimError, reclamar_necesidad
 from .sync.procesador import obtener_deltas, procesar_lote_sync
+
+
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def salud(request):
     return Response(
         {
@@ -35,15 +45,24 @@ def salud(request):
             "version": "v1",
         }
     )
+
+
 @api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
 def sync(request):
     if request.method == "GET":
+        # Pull (delta): cualquier usuario autenticado, incluido rol lectura.
         desde = request.query_params.get("desde")
         cursor = parse_datetime(desde) if desde else None
-
         data = obtener_deltas(desde=cursor)
-
         return Response(data)
+
+    # Push (outbox): solo roles operativos (admin/coordinador/campo).
+    if not puede_escribir(request.user, TODOS_OPERATIVOS):
+        return Response(
+            {"detail": "Tu rol no puede enviar eventos de sincronización."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     serializer = SyncPushSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -53,22 +72,31 @@ def sync(request):
 
     return Response(resultado, status=status.HTTP_200_OK)
 
+
 class OrganizacionViewSet(viewsets.ModelViewSet):
+    # Alta/baja de organizaciones de la alianza: solo admin.
+    roles_escritura = {"admin"}
     queryset = Organizacion.objects.all().order_by("nombre")
     serializer_class = OrganizacionSerializer
 
 
 class CatalogoViewSet(viewsets.ModelViewSet):
+    # El catálogo es vocabulario crítico del matching: lo gestiona coordinación.
+    roles_escritura = SOLO_COORDINACION
     queryset = Catalogo.objects.all().order_by("nombre")
     serializer_class = CatalogoSerializer
 
 
 class CentroSaludViewSet(viewsets.ModelViewSet):
+    # Campo actualiza estado operativo del centro en terreno.
+    roles_escritura = TODOS_OPERATIVOS
     queryset = CentroSalud.objects.all().order_by("nombre")
     serializer_class = CentroSaludSerializer
 
 
 class NecesidadViewSet(viewsets.ModelViewSet):
+    # Captura de necesidades y claim: roles operativos.
+    roles_escritura = TODOS_OPERATIVOS
     queryset = Necesidad.objects.all().order_by("-created_at")
     serializer_class = NecesidadSerializer
 
@@ -81,7 +109,6 @@ class NecesidadViewSet(viewsets.ModelViewSet):
 
         for resultado in resultados:
             donacion = resultado.donacion
-
             data.append(
                 {
                     "id": donacion.id,
@@ -111,6 +138,7 @@ class NecesidadViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
     @action(detail=True, methods=["post"], url_path="claim")
     def claim(self, request, pk=None):
         necesidad = self.get_object()
@@ -144,16 +172,22 @@ class NecesidadViewSet(viewsets.ModelViewSet):
             status=201,
         )
 
+
 class DonacionViewSet(viewsets.ModelViewSet):
+    roles_escritura = TODOS_OPERATIVOS
     queryset = Donacion.objects.all().order_by("-created_at")
     serializer_class = DonacionSerializer
 
 
 class AsignacionViewSet(viewsets.ModelViewSet):
+    # La asignación nace del claim arbitrado; el CRUD manual queda en coordinación
+    # para no saltarse el arbitraje (§5).
+    permission_classes = [EsCoordinacionParaEscribir]
     queryset = Asignacion.objects.all().order_by("-created_at")
     serializer_class = AsignacionSerializer
 
 
 class EnvioViewSet(viewsets.ModelViewSet):
+    roles_escritura = TODOS_OPERATIVOS
     queryset = Envio.objects.all().order_by("-created_at")
     serializer_class = EnvioSerializer

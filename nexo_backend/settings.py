@@ -6,7 +6,7 @@ SECRET_KEY = "nexo-dev-secret-key-cambiar-en-produccion"
 
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -17,6 +17,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     "rest_framework",
+    "rest_framework.authtoken",
     "django_filters",
     "corsheaders",
     "django_q",
@@ -66,16 +67,25 @@ DATABASES = {
 }
 
 LANGUAGE_CODE = "es-ve"
-
 TIME_ZONE = "America/Caracas"
-
 USE_I18N = True
-
 USE_TZ = True
-
 STATIC_URL = "static/"
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+REST_FRAMEWORK = {
+    # En campo el cliente offline usa Token (cabecera Authorization: Token <key>);
+    # Session habilita la API navegable y el admin durante desarrollo.
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    # Por defecto, ninguna ruta es anónima: cada vista decide su política de rol.
+    # PermisoPorRol = lectura para cualquier autenticado, escritura solo admin.
+    "DEFAULT_PERMISSION_CLASSES": [
+        "coordinacion.permisos.PermisoPorRol",
+    ],
+}
 
 Q_CLUSTER = {
     "name": "nexo",

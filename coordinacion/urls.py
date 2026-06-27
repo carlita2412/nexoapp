@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .auth_views import LoginToken
 from .views import (
     AsignacionViewSet,
     CatalogoViewSet,
@@ -24,6 +25,7 @@ router.register(r"envios", EnvioViewSet, basename="envio")
 
 urlpatterns = [
     path("salud/", salud, name="salud"),
+    path("auth/token/", LoginToken.as_view(), name="auth-token"),
     path("", include(router.urls)),
     path("sync/", sync, name="sync"),
 ]
