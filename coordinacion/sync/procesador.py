@@ -158,6 +158,128 @@ def procesar_lote_sync(eventos: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def serializar_objeto_sync(objeto) -> dict[str, Any]:
+    """
+    Convierte un modelo en un diccionario simple para sincronización offline.
+    Evita depender de serializers DRF dentro del motor sync.
+    """
+    data = {
+        "id": str(objeto.id),
+        "created_at": objeto.created_at.isoformat(),
+        "updated_at": objeto.updated_at.isoformat(),
+        "version": objeto.version,
+    }
+
+    if isinstance(objeto, Organizacion):
+        data.update(
+            {
+                "nombre": objeto.nombre,
+                "tipo": objeto.tipo,
+                "contacto": objeto.contacto,
+                "verificada": objeto.verificada,
+                "activa": objeto.activa,
+            }
+        )
+
+    elif isinstance(objeto, Catalogo):
+        data.update(
+            {
+                "codigo": objeto.codigo,
+                "nombre": objeto.nombre,
+                "categoria": objeto.categoria,
+                "unidad": objeto.unidad,
+                "activo": objeto.activo,
+            }
+        )
+
+    elif isinstance(objeto, CentroSalud):
+        data.update(
+            {
+                "nombre": objeto.nombre,
+                "tipo": objeto.tipo,
+                "estado_operativo": objeto.estado_operativo,
+                "geolocalizacion": objeto.geolocalizacion,
+                "estado": objeto.estado,
+                "municipio": objeto.municipio,
+                "tiene_electricidad": objeto.tiene_electricidad,
+                "tiene_agua": objeto.tiene_agua,
+                "tiene_oxigeno": objeto.tiene_oxigeno,
+                "tiene_personal_tecnico": objeto.tiene_personal_tecnico,
+                "contacto_responsable": objeto.contacto_responsable,
+                "ultima_actualizacion": objeto.ultima_actualizacion.isoformat()
+                if objeto.ultima_actualizacion
+                else None,
+            }
+        )
+
+    elif isinstance(objeto, Necesidad):
+        data.update(
+            {
+                "centro": str(objeto.centro_id),
+                "item": str(objeto.item_id),
+                "cantidad_solicitada": objeto.cantidad_solicitada,
+                "cantidad_cubierta": objeto.cantidad_cubierta,
+                "nivel_triage": objeto.nivel_triage,
+                "requisitos_operacion": objeto.requisitos_operacion,
+                "estado": objeto.estado,
+                "reportada_por": str(objeto.reportada_por_id),
+            }
+        )
+
+    elif isinstance(objeto, Donacion):
+        data.update(
+            {
+                "donante": str(objeto.donante_id),
+                "item": str(objeto.item_id),
+                "cantidad": objeto.cantidad,
+                "condicion": objeto.condicion,
+                "vencimiento": objeto.vencimiento.isoformat()
+                if objeto.vencimiento
+                else None,
+                "certificacion": objeto.certificacion,
+                "ubicacion_actual": objeto.ubicacion_actual,
+                "ubicacion_texto": objeto.ubicacion_texto,
+                "estado": objeto.estado,
+            }
+        )
+
+    elif isinstance(objeto, Asignacion):
+        data.update(
+            {
+                "necesidad": str(objeto.necesidad_id),
+                "donacion": str(objeto.donacion_id),
+                "cantidad_asignada": objeto.cantidad_asignada,
+                "organizacion_responsable": str(objeto.organizacion_responsable_id),
+                "estado_claim": objeto.estado_claim,
+                "claim_ts_cliente": objeto.claim_ts_cliente.isoformat()
+                if objeto.claim_ts_cliente
+                else None,
+                "claim_ts_servidor": objeto.claim_ts_servidor.isoformat()
+                if objeto.claim_ts_servidor
+                else None,
+                "estado_logistico": objeto.estado_logistico,
+            }
+        )
+
+    elif isinstance(objeto, Envio):
+        data.update(
+            {
+                "asignacion": str(objeto.asignacion_id),
+                "estado": objeto.estado,
+                "responsable": objeto.responsable,
+                "foto_confirmacion_ref": objeto.foto_confirmacion_ref,
+                "geolocalizacion_entrega": objeto.geolocalizacion_entrega,
+                "timestamp_entrega": objeto.timestamp_entrega.isoformat()
+                if objeto.timestamp_entrega
+                else None,
+                "recibido_por": objeto.recibido_por,
+                "notas": objeto.notas,
+            }
+        )
+
+    return data
+
+
 def obtener_deltas(desde=None) -> dict[str, Any]:
     modelos = {
         "organizaciones": Organizacion,
@@ -181,12 +303,7 @@ def obtener_deltas(desde=None) -> dict[str, Any]:
             queryset = queryset.filter(updated_at__gt=desde)
 
         respuesta["deltas"][nombre] = [
-            {
-                "id": str(objeto.id),
-                "version": objeto.version,
-                "updated_at": objeto.updated_at.isoformat(),
-            }
-            for objeto in queryset
+            serializar_objeto_sync(objeto) for objeto in queryset
         ]
 
     return respuesta
