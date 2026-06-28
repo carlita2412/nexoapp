@@ -21,6 +21,7 @@ ACCION_ADMINISTRAR_ORGANIZACION = "administrar_organizacion"
 ACCIONES_CRITICAS_SYNC = {
     ("necesidad", "crear"): ACCION_CREAR_NECESIDAD,
     ("donacion", "crear"): ACCION_CREAR_DONACION,
+    ("claim_necesidad", "reclamar"): ACCION_RECLAMAR_NECESIDAD,
     ("envio", "crear"): ACCION_CONFIRMAR_ENTREGA,
     ("envio", "actualizar"): ACCION_CONFIRMAR_ENTREGA,
     ("catalogo", "crear"): ACCION_ADMINISTRAR_CATALOGO,
