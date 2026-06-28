@@ -37,6 +37,19 @@ def normalizar_entidad(nombre: str) -> str:
     return nombre.strip().lower()
 
 
+def preparar_datos_modelo(modelo, payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Permite que el cliente offline envíe relaciones como `centro`, `item`, etc.
+    con el UUID de la FK. Django necesita asignarlas como `centro_id`, `item_id`
+    cuando no se está pasando una instancia del modelo relacionado.
+    """
+    datos = payload.copy()
+    for campo in modelo._meta.fields:
+        if campo.is_relation and campo.many_to_one and campo.name in datos:
+            datos[f"{campo.name}_id"] = datos.pop(campo.name)
+    return datos
+
+
 @transaction.atomic
 def procesar_evento_sync(evento: dict[str, Any]) -> dict[str, Any]:
     idempotency_key = evento.get("idempotency_key")
@@ -91,7 +104,7 @@ def procesar_evento_sync(evento: dict[str, Any]) -> dict[str, Any]:
             "mensaje": "El payload debe incluir id.",
         }
 
-    datos = payload.copy()
+    datos = preparar_datos_modelo(modelo, payload)
     version_cliente = datos.pop("version", None)
 
     objeto_existente = modelo.objects.filter(id=entity_id).first()
