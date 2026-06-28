@@ -1,0 +1,21 @@
+nexo.ejemplo.org {
+    encode zstd gzip
+
+    reverse_proxy 127.0.0.1:8000
+
+    handle_path /static/* {
+        root * /var/www/nexo/staticfiles
+        file_server
+    }
+
+    handle_path /media/* {
+        root * /var/www/nexo/media
+        file_server
+    }
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+    }
+}
