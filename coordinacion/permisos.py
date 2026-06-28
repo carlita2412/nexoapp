@@ -8,10 +8,10 @@ Reglas de oro aplicadas (PROMPT_MAESTRO §2.6, §2.7, §6):
 - Mínimo privilegio: lectura por defecto, escritura solo a roles habilitados.
 
 Roles (coordinacion.Usuario.Rol):
-    admin       -> todo
-    coordinador -> coordina la alianza: catálogo, centros, claims, captura
+    admin       -> todo, incluida administración de catálogos y organizaciones
+    coordinador -> coordina la alianza: captura, matching, claims y entregas
     campo        -> captura en terreno: centros, necesidades, donaciones, envíos,
-                    claim de necesidades, push de sync
+                    push de sync; claim limitado a su propia organización
     lectura      -> solo lectura (donantes/prensa/observadores)
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -39,6 +39,28 @@ def puede_escribir(usuario, roles_permitidos) -> bool:
     if usuario.is_superuser:
         return True
     return rol_de(usuario) in roles_permitidos
+
+
+def puede_reclamar_necesidad(usuario, organizacion_responsable_id) -> bool:
+    """
+    Valida la acción sensible de claim.
+
+    Matriz mínima de despliegue:
+    - admin/coordinador: pueden reclamar para cualquier organización.
+    - campo: claim limitado a su propia organización.
+    - lectura/anónimo: no pueden reclamar.
+    """
+    if puede_escribir(usuario, SOLO_COORDINACION):
+        return True
+
+    if not puede_escribir(usuario, {ROL.CAMPO}):
+        return False
+
+    organizacion_usuario_id = getattr(usuario, "organizacion_id", None)
+    if organizacion_usuario_id is None:
+        return False
+
+    return str(organizacion_usuario_id) == str(organizacion_responsable_id)
 
 
 class PermisoPorRol(BasePermission):
