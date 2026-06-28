@@ -1,10 +1,16 @@
+
 import os
 import environ
+
+
 from pathlib import Path
 from dotenv import load_dotenv
 
+import environ
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+
 
 if os.name == "nt":
     QGIS_BIN_PATH = os.environ.get("QGIS_BIN_PATH")
@@ -27,6 +33,35 @@ env = environ.Env(
     DB_PORT=(str, "5432"),
     NEXO_DB_ENGINE=(str, "postgis"),
 )
+
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, []),
+    CSRF_TRUSTED_ORIGINS=(list, []),
+    CORS_ALLOWED_ORIGINS=(list, []),
+    DB_NAME=(str, "nexo"),
+    DB_USER=(str, "nexo"),
+    DB_PASSWORD=(str, ""),
+    DB_HOST=(str, "localhost"),
+    DB_PORT=(str, "5432"),
+    NEXO_DB_ENGINE=(str, "postgis"),
+)
+env.read_env(BASE_DIR / ".env")
+
+SECRET_KEY = env("SECRET_KEY")
+
+DEBUG = env("DEBUG")
+
+ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+
 
 env.read_env(BASE_DIR / ".env")
 GDAL_LIBRARY_PATH = env("GDAL_LIBRARY_PATH", default=None)
@@ -103,7 +138,10 @@ TEMPLATES = [
 WSGI_APPLICATION = "nexo_backend.wsgi.application"
 
 NEXO_DB_ENGINE = env("NEXO_DB_ENGINE").lower()
+
 import os
+
+
 
 
 if NEXO_DB_ENGINE == "spatialite":
@@ -114,6 +152,16 @@ if NEXO_DB_ENGINE == "spatialite":
         }
     }
     SPATIALITE_LIBRARY_PATH = env("SPATIALITE_LIBRARY_PATH", default="")
+
+
+elif NEXO_DB_ENGINE == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+
 else:
     DATABASES = {
         "default": {
@@ -130,7 +178,18 @@ LANGUAGE_CODE = "es-ve"
 TIME_ZONE = "America/Caracas"
 USE_I18N = True
 USE_TZ = True
+
 STATIC_URL = "static/"
+STATIC_ROOT = env.path("STATIC_ROOT", default=BASE_DIR / "staticfiles")
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Redirección posterior al login/logout de la API navegable de DRF.
@@ -139,7 +198,7 @@ LOGOUT_REDIRECT_URL = "/api-auth/login/"
 
 # --- Almacenamiento de fotos de entrega ---
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
 
 # Presupuesto y límites de fotos (§2). El cliente comprime antes de subir; el
 # servidor re-comprime para garantizar el objetivo.
@@ -178,6 +237,7 @@ KOBO_ASSET_DONACIONES = env("KOBO_ASSET_DONACIONES", default="")
 KOBO_WEBHOOK_TOKEN = env("KOBO_WEBHOOK_TOKEN", default="")
 KOBO_PULL_LIMIT = env.int("KOBO_PULL_LIMIT", default=500)
 
+
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=not DEBUG)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=not DEBUG)
@@ -188,3 +248,5 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
     default=False,
 )
 SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
+
+

@@ -20,14 +20,20 @@ Este repositorio contiene el backend operativo de la API `v1` de Nexo. Actualmen
 - Webhook alternativo para KoBoToolbox.
 - Endpoint multipart para fotos de confirmación de entrega.
 - Compresión asíncrona de fotos con `django-q2`.
+
 - Seed inicial idempotente de organizaciones, catálogos, centros de salud y usuarios base.
 - Pruebas de idempotencia, matching, delta sync, claim, RBAC, fotos y seed inicial.
+=======
+- Configuración productiva por `.env` para PostgreSQL/PostGIS, CORS/CSRF, media persistente, staticfiles, Gunicorn y Caddy.
+- Pruebas de idempotencia, matching, delta sync, claim, RBAC y fotos.
+>>>>>>> origin/cerrar-config-produccion
 
 ## Stack actual
 
 - Python 3.x
 - Django 5.x
 - Django REST Framework
+- PostgreSQL/PostGIS en producción
 - Token Authentication de DRF
 - django-filter
 - django-cors-headers
@@ -39,7 +45,7 @@ Este repositorio contiene el backend operativo de la API `v1` de Nexo. Actualmen
 - pytest + pytest-django
 - ruff + black
 
-> Nota: el `settings.py` actual usa SQLite por defecto para desarrollo local. Para producción pública debe configurarse PostgreSQL/PostGIS antes del despliegue final.
+> Producción usa `django.contrib.gis.db.backends.postgis`. Para pruebas locales/CI puede usarse `NEXO_DB_ENGINE=spatialite` o `NEXO_DB_ENGINE=sqlite` cuando aplique.
 
 ## Reglas implementadas
 
@@ -52,6 +58,7 @@ Este repositorio contiene el backend operativo de la API `v1` de Nexo. Actualmen
 - Seed inicial idempotente para operar con catálogos y organizaciones base sin texto libre.
 - Fotos de entrega comprimidas a presupuesto bajo de datos y original descartado tras procesamiento.
 - Sin captura de pacientes ni PII clínica innecesaria.
+- Configuración sensible fuera del código mediante `.env`.
 
 ## Instalación local
 
@@ -149,11 +156,25 @@ python manage.py seed_inicial --password-inicial 'Nueva-clave-temporal-123' --re
 
 ## Variables de entorno
 
-El archivo `.env.example` define las variables usadas actualmente:
+El archivo `.env.example` define las variables necesarias para desarrollo y producción:
 
 ```env
-DEBUG=true
-ALLOWED_HOSTS=localhost,127.0.0.1,testserver
+SECRET_KEY=change-me
+DEBUG=false
+ALLOWED_HOSTS=nexo.ejemplo.org,localhost,127.0.0.1,testserver
+CSRF_TRUSTED_ORIGINS=https://nexo.ejemplo.org
+CORS_ALLOWED_ORIGINS=https://nexo.ejemplo.org
+SECURE_SSL_REDIRECT=true
+
+NEXO_DB_ENGINE=postgis
+DB_NAME=nexo
+DB_USER=nexo
+DB_PASSWORD=change-me
+DB_HOST=127.0.0.1
+DB_PORT=5432
+
+STATIC_ROOT=/var/www/nexo/staticfiles
+MEDIA_ROOT=/var/www/nexo/media
 
 KOBO_API_URL=https://kf.kobotoolbox.org/api/v2
 KOBO_TOKEN=
@@ -167,6 +188,16 @@ Variables relevantes:
 
 | Variable | Uso |
 |---|---|
+| `SECRET_KEY` | Clave privada de Django. Obligatoria y nunca debe versionarse con valor real. |
+| `DEBUG` | Debe ser `false` en producción. |
+| `ALLOWED_HOSTS` | Dominios/IP autorizados para servir la API. |
+| `CSRF_TRUSTED_ORIGINS` | Orígenes HTTPS confiables para CSRF. |
+| `CORS_ALLOWED_ORIGINS` | Orígenes permitidos para la PWA/portal. |
+| `SECURE_SSL_REDIRECT` | Fuerza HTTPS cuando el reverse proxy ya está activo. |
+| `NEXO_DB_ENGINE` | `postgis` en producción; `spatialite`/`sqlite` para pruebas locales controladas. |
+| `DB_NAME`/`DB_USER`/`DB_PASSWORD`/`DB_HOST`/`DB_PORT` | Credenciales PostgreSQL/PostGIS. |
+| `STATIC_ROOT` | Carpeta persistente para `collectstatic`. |
+| `MEDIA_ROOT` | Carpeta persistente para fotos comprimidas y media. |
 | `KOBO_API_URL` | Base URL de la API de KoBoToolbox. |
 | `KOBO_TOKEN` | Token de API KoBo para pull incremental. |
 | `KOBO_ASSET_NECESIDADES` | UID del formulario KoBo de necesidades. |
@@ -174,6 +205,24 @@ Variables relevantes:
 | `KOBO_WEBHOOK_TOKEN` | Token opcional para autorizar webhooks KoBo. |
 | `KOBO_PULL_LIMIT` | Límite de submissions por consulta KoBo. |
 | `NEXO_SEED_PASSWORD` | Password temporal opcional para usuarios creados por `seed_inicial`. |
+
+## Despliegue productivo mínimo
+
+La guía operativa vive en [`docs/produccion.md`](docs/produccion.md). Incluye:
+
+- creación de `.env` real,
+- instalación PostgreSQL + PostGIS,
+- migraciones,
+- `collectstatic`,
+- `python manage.py check --deploy`,
+- servicio systemd para Gunicorn,
+- Caddy como HTTPS/reverse proxy,
+- verificación de `/api/v1/salud/`.
+
+Plantillas incluidas:
+
+- [`deploy/nexo.service.example`](deploy/nexo.service.example)
+- [`deploy/Caddyfile.example`](deploy/Caddyfile.example)
 
 ## Seguridad y roles
 
@@ -407,17 +456,7 @@ POST /api/v1/kobo/webhook/necesidad/
 POST /api/v1/kobo/webhook/donacion/
 ```
 
-Si `KOBO_WEBHOOK_TOKEN` tiene valor, el request debe incluirlo de una de estas formas:
-
-```http
-X-Kobo-Token: <token>
-```
-
-o bien:
-
-```text
-/api/v1/kobo/webhook/necesidad/?token=<token>
-```
+Si `KOBO_WEBHOOK_TOKEN` tiene valor, el request debe incluirlo con `X-Kobo-Token: <token>` o `?token=<token>`.
 
 ## Modelos principales
 
@@ -475,8 +514,16 @@ Coberturas funcionales existentes:
 python manage.py makemigrations
 python manage.py migrate
 
+
 # Seed inicial
 python manage.py seed_inicial --password-inicial 'Cambia-esta-clave-123'
+
+# Staticfiles
+python manage.py collectstatic --noinput
+
+# Validación de despliegue
+python manage.py check --deploy
+
 
 # Servidor local
 python manage.py runserver
@@ -495,10 +542,10 @@ pytest -q
 
 ## Pendientes recomendados antes del despliegue público
 
+
 - Configurar base de datos de producción con PostgreSQL/PostGIS.
 - Mover `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` y configuración de base de datos a variables de entorno reales.
+- Cargar seed/fixtures iniciales de organizaciones, centros, catálogos y usuarios.
 - Validar formularios KoBo reales contra los mapeadores actuales.
 - Agregar auditoría efectiva en acciones críticas.
-- Revisar CORS para dominios finales de la PWA/portal.
-- Configurar almacenamiento persistente de media en producción.
-- Configurar HTTPS y reverse proxy para despliegue público.
+- Reemplazar dominios de ejemplo por el dominio final en `.env`, Caddy, CSRF y CORS.
