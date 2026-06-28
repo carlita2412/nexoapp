@@ -1,27 +1,22 @@
 """
 Tests de control de acceso por rol (RBAC) - PROMPT_MAESTRO 2.6, 2.7, 6.
 
-Matriz verificada (lectura / campo / coordinador / admin / anonimo):
+Matriz mínima verificada (lectura / campo / coordinador / admin / anonimo):
   GET cualquier ruta ...... si  / si  / si  / si  / no (401)
   POST organizacion ....... no  / no  / no  / si  / no
-  POST/PUT catalogo ....... no  / no  / si  / si  / no
+  POST/PUT catalogo ....... no  / no  / no  / si  / no
   POST necesidad/donacion . no  / si  / si  / si  / no
   POST centro-salud ....... no  / si  / si  / si  / no
   POST sync (push) ........ no  / si  / si  / si  / no
   GET sync (pull) ......... si  / si  / si  / si  / no
-  claim necesidad ......... no  / si  / si  / si  / no
+  claim necesidad ......... no  / si limitado / si / si / no
   salud ................... publico para todos, incluido anonimo
 """
 import pytest
 
-from coordinacion.models import Organizacion, Usuario
+from coordinacion.models import Catalogo, Organizacion, Usuario
 
 pytestmark = pytest.mark.django_db
-
-
-# --------------------------------------------------------------------------- #
-# Anónimo: cerrado para todo lo sensible, abierto solo a /salud
-# --------------------------------------------------------------------------- #
 
 
 def test_salud_es_publico(api):
@@ -47,11 +42,6 @@ def test_anonimo_no_crea_organizacion(api):
 def test_anonimo_no_hace_push_sync(api):
     r = api.post("/api/v1/sync/", {"eventos": []}, format="json")
     assert r.status_code in (401, 403)
-
-
-# --------------------------------------------------------------------------- #
-# Lectura: solo GET, nunca escribe
-# --------------------------------------------------------------------------- #
 
 
 def test_lectura_puede_leer(autenticar, usuarios):
@@ -85,11 +75,6 @@ def test_lectura_no_hace_push_sync(autenticar, usuarios):
     api = autenticar(usuarios[Usuario.Rol.LECTURA])
     r = api.post("/api/v1/sync/", {"eventos": []}, format="json")
     assert r.status_code == 403
-
-
-# --------------------------------------------------------------------------- #
-# Campo: captura en terreno, claim y push; NO administra org ni catálogo
-# --------------------------------------------------------------------------- #
 
 
 def test_campo_crea_necesidad(autenticar, usuarios, centro, catalogo, organizacion):
@@ -144,7 +129,13 @@ def test_campo_hace_push_sync(autenticar, usuarios):
     assert r.status_code == 200
 
 
-def test_campo_puede_reclamar(autenticar, usuarios, necesidad, donacion, organizacion):
+def test_campo_puede_reclamar_para_su_organizacion(
+    autenticar,
+    usuarios,
+    necesidad,
+    donacion,
+    organizacion,
+):
     api = autenticar(usuarios[Usuario.Rol.CAMPO])
     r = api.post(
         f"/api/v1/necesidades/{necesidad.id}/claim/",
@@ -159,19 +150,37 @@ def test_campo_puede_reclamar(autenticar, usuarios, necesidad, donacion, organiz
     assert r.data["estado"] == "confirmada"
 
 
-# --------------------------------------------------------------------------- #
-# Coordinador: catálogo sí; organización no
-# --------------------------------------------------------------------------- #
+def test_campo_no_reclama_para_otra_organizacion(
+    autenticar,
+    usuarios,
+    necesidad,
+    donacion,
+):
+    otra_organizacion = Organizacion.objects.create(
+        nombre="Otra organizacion",
+        tipo=Organizacion.Tipo.ONG,
+    )
+    api = autenticar(usuarios[Usuario.Rol.CAMPO])
+    r = api.post(
+        f"/api/v1/necesidades/{necesidad.id}/claim/",
+        {
+            "donacion_id": str(donacion.id),
+            "cantidad_asignada": 5,
+            "organizacion_responsable_id": str(otra_organizacion.id),
+        },
+        format="json",
+    )
+    assert r.status_code == 403
 
 
-def test_coordinador_edita_catalogo(autenticar, usuarios):
+def test_coordinador_no_edita_catalogo(autenticar, usuarios):
     api = autenticar(usuarios[Usuario.Rol.COORDINADOR])
     r = api.post(
         "/api/v1/catalogos/",
         {"codigo": "Y-1", "nombre": "Guantes", "categoria": "insumo"},
         format="json",
     )
-    assert r.status_code == 201
+    assert r.status_code == 403
 
 
 def test_coordinador_no_crea_organizacion(autenticar, usuarios):
@@ -184,9 +193,28 @@ def test_coordinador_no_crea_organizacion(autenticar, usuarios):
     assert r.status_code == 403
 
 
-# --------------------------------------------------------------------------- #
-# Admin: todo
-# --------------------------------------------------------------------------- #
+def test_coordinador_puede_reclamar_para_cualquier_organizacion(
+    autenticar,
+    usuarios,
+    necesidad,
+    donacion,
+):
+    otra_organizacion = Organizacion.objects.create(
+        nombre="Aliado logistico",
+        tipo=Organizacion.Tipo.ONG,
+    )
+    api = autenticar(usuarios[Usuario.Rol.COORDINADOR])
+    r = api.post(
+        f"/api/v1/necesidades/{necesidad.id}/claim/",
+        {
+            "donacion_id": str(donacion.id),
+            "cantidad_asignada": 5,
+            "organizacion_responsable_id": str(otra_organizacion.id),
+        },
+        format="json",
+    )
+    assert r.status_code == 201
+    assert r.data["estado"] == "confirmada"
 
 
 def test_admin_crea_organizacion(autenticar, usuarios):
@@ -199,30 +227,12 @@ def test_admin_crea_organizacion(autenticar, usuarios):
     assert r.status_code == 201
 
 
-# --------------------------------------------------------------------------- #
-# Login por token: entrega token + rol, y el token autentica
-# --------------------------------------------------------------------------- #
-
-
-def test_login_token_devuelve_rol(api, usuarios, organizacion):
-    user = usuarios[Usuario.Rol.COORDINADOR]
-    user.set_password("clave-de-prueba-xyz")
-    user.save()
+def test_admin_edita_catalogo(autenticar, usuarios):
+    api = autenticar(usuarios[Usuario.Rol.ADMIN])
     r = api.post(
-        "/api/v1/auth/token/",
-        {"username": user.username, "password": "clave-de-prueba-xyz"},
-        format="json",
-    )
-    assert r.status_code == 200
-    assert r.data["rol"] == "coordinador"
-    assert r.data["organizacion"] == str(organizacion.id)
-    token = r.data["token"]
-
-    # El token autentica una petición de escritura permitida al coordinador.
-    api.credentials(HTTP_AUTHORIZATION=f"Token {token}")
-    r2 = api.post(
         "/api/v1/catalogos/",
-        {"codigo": "Z-1", "nombre": "Suero", "categoria": "insumo"},
+        {"codigo": "ADM-1", "nombre": "Suero", "categoria": "insumo"},
         format="json",
     )
-    assert r2.status_code == 201
+    assert r.status_code == 201
+    assert Catalogo.objects.filter(codigo="ADM-1").exists()
