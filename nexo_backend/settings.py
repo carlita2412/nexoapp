@@ -1,12 +1,11 @@
-
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+
 import environ
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
-
 
 if os.name == "nt":
     QGIS_BIN_PATH = os.environ.get("QGIS_BIN_PATH")
@@ -16,19 +15,6 @@ if os.name == "nt":
 
     GDAL_LIBRARY_PATH = os.environ.get("GDAL_LIBRARY_PATH")
     GEOS_LIBRARY_PATH = os.environ.get("GEOS_LIBRARY_PATH")
-    
-env = environ.Env(
-    DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, []),
-    CSRF_TRUSTED_ORIGINS=(list, []),
-    CORS_ALLOWED_ORIGINS=(list, []),
-    DB_NAME=(str, "nexo"),
-    DB_USER=(str, "nexo"),
-    DB_PASSWORD=(str, ""),
-    DB_HOST=(str, "localhost"),
-    DB_PORT=(str, "5432"),
-    NEXO_DB_ENGINE=(str, "postgis"),
-)
 
 env = environ.Env(
     DEBUG=(bool, False),
@@ -44,28 +30,25 @@ env = environ.Env(
 )
 env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("SECRET_KEY")
-DEBUG = env("DEBUG")
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
-CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
-CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
-
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
-
-
-env.read_env(BASE_DIR / ".env")
 GDAL_LIBRARY_PATH = env("GDAL_LIBRARY_PATH", default=None)
 GEOS_LIBRARY_PATH = env("GEOS_LIBRARY_PATH", default=None)
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
-
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS", default=[])
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS", default=[])
+
+if DEBUG:
+    origenes_desarrollo = [
+        "http://localhost:4321",
+        "http://127.0.0.1:4321",
+    ]
+    for origen in origenes_desarrollo:
+        if origen not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(origen)
+        if origen not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(origen)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
@@ -78,6 +61,7 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
     default=False,
 )
 SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -130,11 +114,6 @@ WSGI_APPLICATION = "nexo_backend.wsgi.application"
 
 NEXO_DB_ENGINE = env("NEXO_DB_ENGINE").lower()
 
-import os
-
-
-
-
 if NEXO_DB_ENGINE == "spatialite":
     DATABASES = {
         "default": {
@@ -143,7 +122,6 @@ if NEXO_DB_ENGINE == "spatialite":
         }
     }
     SPATIALITE_LIBRARY_PATH = env("SPATIALITE_LIBRARY_PATH", default="")
-
 elif NEXO_DB_ENGINE == "sqlite":
     DATABASES = {
         "default": {
@@ -211,17 +189,3 @@ KOBO_ASSET_NECESIDADES = env("KOBO_ASSET_NECESIDADES", default="")
 KOBO_ASSET_DONACIONES = env("KOBO_ASSET_DONACIONES", default="")
 KOBO_WEBHOOK_TOKEN = env("KOBO_WEBHOOK_TOKEN", default="")
 KOBO_PULL_LIMIT = env.int("KOBO_PULL_LIMIT", default=500)
-
-
-SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
-SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=not DEBUG)
-CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=not DEBUG)
-
-SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0 if DEBUG else 31536000)
-SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
-    "SECURE_HSTS_INCLUDE_SUBDOMAINS",
-    default=False,
-)
-SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
-
-
