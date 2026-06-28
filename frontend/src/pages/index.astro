@@ -1,0 +1,107 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Nexo PWA Offline">
+  <main x-data="nexoApp" x-init="init" x-cloak class="mx-auto min-h-screen max-w-3xl px-4 py-4 pb-24">
+    <header class="mb-4 rounded-3xl bg-slate-900 p-5 text-white shadow-lg">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-sm font-bold uppercase tracking-wide text-slate-300">Nexo</p>
+          <h1 class="text-2xl font-black">PWA offline</h1>
+          <p class="mt-1 text-sm text-slate-300">Captura, matching, claim y entregas.</p>
+        </div>
+        <span class="pill" :class="online ? 'bg-emerald-300 text-emerald-950' : 'bg-amber-300 text-amber-950'" x-text="estadoConexionTexto"></span>
+      </div>
+    </header>
+
+    <section x-show="listo && !autenticado" class="tarjeta space-y-4">
+      <h2 class="text-xl font-black">Login por token</h2>
+      <p class="text-sm text-slate-600">Entra una vez con conexión. Luego el token queda local para operar offline.</p>
+      <label class="etiqueta">API base</label><input class="campo" x-model="login.apiBase" placeholder="/api/v1" />
+      <label class="etiqueta">Usuario</label><input class="campo" x-model="login.username" />
+      <label class="etiqueta">Contraseña</label><input class="campo" x-model="login.password" type="password" />
+      <button class="boton-primario w-full" @click="iniciarSesion">Entrar</button>
+    </section>
+
+    <section x-show="listo && autenticado" class="space-y-4">
+      <div class="tarjeta flex flex-wrap items-center justify-between gap-3">
+        <div><p class="text-sm text-slate-500">Sesión</p><b x-text="`${sesion.usuario} · ${sesion.rol}`"></b></div>
+        <button class="boton-secundario" @click="cerrarSesion">Salir</button>
+      </div>
+
+      <nav class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <button class="boton-secundario" @click="pestaña='cola'">Cola</button>
+        <button class="boton-secundario" @click="pestaña='necesidad'">Necesidad</button>
+        <button class="boton-secundario" @click="pestaña='donacion'">Donación</button>
+        <button class="boton-secundario" @click="pestaña='matching'">Matching</button>
+        <button class="boton-secundario" @click="pestaña='entrega'">Entrega</button>
+      </nav>
+
+      <p x-show="mensaje" class="rounded-2xl bg-emerald-100 p-3 text-sm font-semibold text-emerald-900" x-text="mensaje"></p>
+      <p x-show="error" class="rounded-2xl bg-red-100 p-3 text-sm font-semibold text-red-900" x-text="error"></p>
+
+      <section x-show="pestaña === 'cola'" class="space-y-4">
+        <div class="tarjeta space-y-3">
+          <h2 class="text-xl font-black">Cola pendiente</h2>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div class="rounded-2xl bg-amber-100 p-3 text-center"><b x-text="resumen.pendientes"></b><br><small>pendientes</small></div>
+            <div class="rounded-2xl bg-emerald-100 p-3 text-center"><b x-text="resumen.sincronizados"></b><br><small>ok</small></div>
+            <div class="rounded-2xl bg-orange-100 p-3 text-center"><b x-text="resumen.superada"></b><br><small>superadas</small></div>
+            <div class="rounded-2xl bg-red-100 p-3 text-center"><b x-text="resumen.conflicto"></b><br><small>conflictos</small></div>
+            <div class="rounded-2xl bg-sky-100 p-3 text-center"><b x-text="resumen.fotos"></b><br><small>fotos</small></div>
+          </div>
+          <button class="boton-primario w-full" @click="sincronizarManual" :disabled="!online">Sincronizar ahora</button>
+          <button class="boton-secundario w-full" @click="descargarDeltas" :disabled="!online">Descargar deltas</button>
+        </div>
+        <template x-for="evento in cola" :key="evento.idempotency_key">
+          <article class="tarjeta">
+            <div class="flex justify-between gap-3"><b x-text="evento.entity"></b><span class="pill bg-slate-100 text-slate-800" x-text="evento.estado"></span></div>
+            <p class="mt-2 break-all text-xs text-slate-500" x-text="evento.idempotency_key"></p>
+            <p class="mt-2 text-sm" x-text="evento.respuesta?.mensaje || evento.error || ''"></p>
+          </article>
+        </template>
+      </section>
+
+      <section x-show="pestaña === 'necesidad'" class="tarjeta space-y-3">
+        <h2 class="text-xl font-black">Captura de necesidad</h2>
+        <label class="etiqueta">Centro</label><select class="campo" x-model="formNecesidad.centro"><template x-for="c in centros" :key="c.id"><option :value="c.id" x-text="c.nombre"></option></template></select>
+        <label class="etiqueta">Item</label><select class="campo" x-model="formNecesidad.item"><template x-for="i in catalogos" :key="i.id"><option :value="i.id" x-text="i.nombre"></option></template></select>
+        <label class="etiqueta">Cantidad</label><input class="campo" type="number" min="1" x-model="formNecesidad.cantidad_solicitada" />
+        <label class="etiqueta">Triage</label><select class="campo" x-model="formNecesidad.nivel_triage"><option value="1_critico">1 crítico</option><option value="2_urgente">2 urgente</option><option value="3_importante">3 importante</option><option value="4_rutinario">4 rutinario</option></select>
+        <label class="flex gap-2"><input type="checkbox" x-model="formNecesidad.requiere_electricidad" /> Requiere electricidad</label>
+        <label class="flex gap-2"><input type="checkbox" x-model="formNecesidad.requiere_oxigeno" /> Requiere oxígeno</label>
+        <label class="flex gap-2"><input type="checkbox" x-model="formNecesidad.requiere_personal_entrenado" /> Requiere personal entrenado</label>
+        <button class="boton-primario w-full" @click="crearNecesidad">Guardar local primero</button>
+      </section>
+
+      <section x-show="pestaña === 'donacion'" class="tarjeta space-y-3">
+        <h2 class="text-xl font-black">Captura de donación</h2>
+        <label class="etiqueta">Item</label><select class="campo" x-model="formDonacion.item"><template x-for="i in catalogos" :key="i.id"><option :value="i.id" x-text="i.nombre"></option></template></select>
+        <label class="etiqueta">Cantidad</label><input class="campo" type="number" min="1" x-model="formDonacion.cantidad" />
+        <label class="etiqueta">Condición</label><select class="campo" x-model="formDonacion.condicion"><option value="nuevo">Nuevo</option><option value="usado_funcional">Usado funcional</option><option value="requiere_calibracion">Requiere calibración</option><option value="requiere_reparacion">Requiere reparación</option></select>
+        <label class="etiqueta">Ubicación</label><input class="campo" x-model="formDonacion.ubicacion_texto" />
+        <button class="boton-primario w-full" @click="crearDonacion">Guardar local primero</button>
+      </section>
+
+      <section x-show="pestaña === 'matching'" class="space-y-3">
+        <div class="tarjeta space-y-3">
+          <h2 class="text-xl font-black">Matching y claim</h2>
+          <label class="etiqueta">Necesidad</label><select class="campo" x-model="formMatching.necesidad"><template x-for="n in necesidades" :key="n.id"><option :value="n.id" x-text="`${nombreCatalogo(n.item)} · ${n.estado}`"></option></template></select>
+          <button class="boton-secundario w-full" @click="buscarCandidatos">Buscar candidatos</button>
+        </div>
+        <template x-for="c in candidatos" :key="c.id"><article class="tarjeta space-y-2"><b x-text="c.item"></b><p class="text-sm" x-text="c.motivo"></p><p class="text-sm">Cantidad: <span x-text="c.cantidad_disponible"></span></p><button class="boton-alerta w-full" @click="reclamar(c.id)" :disabled="!c.compatible">Reclamar offline</button></article></template>
+      </section>
+
+      <section x-show="pestaña === 'entrega'" class="tarjeta space-y-3">
+        <h2 class="text-xl font-black">Confirmación de entrega</h2>
+        <label class="etiqueta">Asignación</label><select class="campo" x-model="formEntrega.asignacion"><template x-for="a in asignaciones" :key="a.id"><option :value="a.id" x-text="`${a.estado_claim} · ${a.id}`"></option></template></select>
+        <label class="etiqueta">Responsable</label><input class="campo" x-model="formEntrega.responsable" />
+        <label class="etiqueta">Recibido por</label><input class="campo" x-model="formEntrega.recibido_por" />
+        <label class="etiqueta">Ubicación / referencia</label><input class="campo" x-model="formEntrega.geolocalizacion_entrega_texto" />
+        <label class="etiqueta">Notas</label><textarea class="campo" rows="3" x-model="formEntrega.notas"></textarea>
+        <label class="etiqueta">Foto</label><input class="campo" type="file" accept="image/*" @change="seleccionarFoto" />
+        <button class="boton-primario w-full" @click="confirmarEntrega">Guardar entrega offline</button>
+      </section>
+    </section>
+  </main>
+</Base>
