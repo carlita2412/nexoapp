@@ -2,9 +2,11 @@ import hashlib
 import json
 from typing import Any
 
+from django.contrib.gis.db.models import PointField
 from django.db import transaction
 from django.utils import timezone
 
+from coordinacion.geo import normalizar_point, point_a_dict
 from coordinacion.models import (
     Asignacion,
     Catalogo,
@@ -42,11 +44,16 @@ def preparar_datos_modelo(modelo, payload: dict[str, Any]) -> dict[str, Any]:
     Permite que el cliente offline envíe relaciones como `centro`, `item`, etc.
     con el UUID de la FK. Django necesita asignarlas como `centro_id`, `item_id`
     cuando no se está pasando una instancia del modelo relacionado.
+
+    También normaliza PointField para que sync acepte GeoJSON, listas [lon, lat],
+    dicts {lat, lon} y geopoint de KoBo en texto.
     """
     datos = payload.copy()
     for campo in modelo._meta.fields:
         if campo.is_relation and campo.many_to_one and campo.name in datos:
             datos[f"{campo.name}_id"] = datos.pop(campo.name)
+        elif isinstance(campo, PointField) and campo.name in datos:
+            datos[campo.name] = normalizar_point(datos[campo.name])
     return datos
 
 
@@ -104,7 +111,15 @@ def procesar_evento_sync(evento: dict[str, Any]) -> dict[str, Any]:
             "mensaje": "El payload debe incluir id.",
         }
 
-    datos = preparar_datos_modelo(modelo, payload)
+    try:
+        datos = preparar_datos_modelo(modelo, payload)
+    except (TypeError, ValueError) as exc:
+        return {
+            "idempotency_key": idempotency_key,
+            "estado": "conflicto",
+            "mensaje": f"Coordenadas inválidas: {exc}",
+        }
+
     version_cliente = datos.pop("version", None)
 
     objeto_existente = modelo.objects.filter(id=entity_id).first()
@@ -211,7 +226,7 @@ def serializar_objeto_sync(objeto) -> dict[str, Any]:
                 "nombre": objeto.nombre,
                 "tipo": objeto.tipo,
                 "estado_operativo": objeto.estado_operativo,
-                "geolocalizacion": objeto.geolocalizacion,
+                "geolocalizacion": point_a_dict(objeto.geolocalizacion),
                 "estado": objeto.estado,
                 "municipio": objeto.municipio,
                 "tiene_electricidad": objeto.tiene_electricidad,
@@ -250,7 +265,7 @@ def serializar_objeto_sync(objeto) -> dict[str, Any]:
                 if objeto.vencimiento
                 else None,
                 "certificacion": objeto.certificacion,
-                "ubicacion_actual": objeto.ubicacion_actual,
+                "ubicacion_actual": point_a_dict(objeto.ubicacion_actual),
                 "ubicacion_texto": objeto.ubicacion_texto,
                 "estado": objeto.estado,
             }
@@ -281,7 +296,8 @@ def serializar_objeto_sync(objeto) -> dict[str, Any]:
                 "estado": objeto.estado,
                 "responsable": objeto.responsable,
                 "foto_confirmacion_ref": objeto.foto_confirmacion_ref,
-                "geolocalizacion_entrega": objeto.geolocalizacion_entrega,
+                "geolocalizacion_entrega": point_a_dict(objeto.geolocalizacion_entrega),
+                "geolocalizacion_entrega_texto": objeto.geolocalizacion_entrega_texto,
                 "timestamp_entrega": objeto.timestamp_entrega.isoformat()
                 if objeto.timestamp_entrega
                 else None,
