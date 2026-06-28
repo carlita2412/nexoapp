@@ -5,6 +5,7 @@ from typing import Any
 from django.contrib.gis.db.models import PointField
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from coordinacion.auditoria import accion_sync_para, registrar_auditoria
 from coordinacion.geo import normalizar_point, point_a_dict
@@ -19,7 +20,10 @@ from coordinacion.models import (
     Necesidad,
     Organizacion,
 )
+from coordinacion.sync.arbitraje import ClaimError, reclamar_necesidad
 
+
+ENTIDAD_CLAIM_NECESIDAD = "claim_necesidad"
 
 MODELOS_SINCRONIZABLES = {
     "organizacion": Organizacion,
@@ -57,6 +61,8 @@ def preparar_datos_modelo(modelo, payload: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(campo, PointField) and campo.name in datos:
             datos[campo.name] = normalizar_point(datos[campo.name])
     return datos
+
+
 def registrar_auditoria_sync(
     *,
     usuario,
@@ -84,11 +90,205 @@ def registrar_auditoria_sync(
     )
 
 
+def _respuesta_duplicado(evento_existente: EventoSincronizado) -> dict[str, Any]:
+    return {
+        "idempotency_key": str(evento_existente.idempotency_key),
+        "estado": "duplicado",
+        "mensaje": "Evento ya procesado anteriormente.",
+        "entity": evento_existente.entity,
+        "entity_id": str(evento_existente.entity_id)
+        if evento_existente.entity_id
+        else None,
+        "resultado_original": evento_existente.resultado,
+    }
+
+
+def _registrar_evento_sync(
+    *,
+    idempotency_key,
+    entidad: str,
+    entity_id=None,
+    resultado: str,
+    payload_hash: str,
+) -> None:
+    EventoSincronizado.objects.create(
+        idempotency_key=idempotency_key,
+        entity=entidad,
+        entity_id=entity_id,
+        resultado=resultado,
+        payload_hash=payload_hash,
+    )
+
+
+def _campo(payload: dict[str, Any], *nombres: str):
+    for nombre in nombres:
+        if nombre in payload:
+            return payload[nombre]
+    return None
+
+
+def _es_claim_superado(necesidad_id, mensaje: str) -> bool:
+    necesidad = Necesidad.objects.filter(id=necesidad_id).first()
+    if necesidad is not None:
+        if necesidad.estado == Necesidad.Estado.CUBIERTA:
+            return True
+        if necesidad.cantidad_cubierta >= necesidad.cantidad_solicitada:
+            return True
+
+    mensaje_normalizado = mensaje.lower()
+    return (
+        "ya está cubierta" in mensaje_normalizado
+        or "excede lo pendiente" in mensaje_normalizado
+    )
+
+
+def _parsear_claim_ts_cliente(valor):
+    if valor is None:
+        return None
+    if hasattr(valor, "isoformat"):
+        return valor
+    return parse_datetime(str(valor))
+
+
+@transaction.atomic
+def procesar_claim_necesidad_sync(
+    evento: dict[str, Any],
+    *,
+    usuario=None,
+) -> dict[str, Any]:
+    idempotency_key = evento.get("idempotency_key")
+    payload = evento.get("payload", {})
+
+    if not idempotency_key:
+        return {
+            "idempotency_key": None,
+            "estado": "conflicto",
+            "mensaje": "Falta idempotency_key.",
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "idempotency_key": idempotency_key,
+            "estado": "conflicto",
+            "mensaje": "Payload inválido.",
+        }
+
+    evento_existente = EventoSincronizado.objects.filter(
+        idempotency_key=idempotency_key
+    ).first()
+    if evento_existente:
+        return _respuesta_duplicado(evento_existente)
+
+    payload_hash = generar_hash_payload(payload)
+    necesidad_id = _campo(payload, "necesidad", "necesidad_id")
+    donacion_id = _campo(payload, "donacion", "donacion_id")
+    organizacion_responsable_id = _campo(
+        payload,
+        "organizacion_responsable",
+        "organizacion_responsable_id",
+    )
+    cantidad_asignada = payload.get("cantidad_asignada")
+
+    if not all(
+        [necesidad_id, donacion_id, organizacion_responsable_id, cantidad_asignada]
+    ):
+        _registrar_evento_sync(
+            idempotency_key=idempotency_key,
+            entidad=ENTIDAD_CLAIM_NECESIDAD,
+            resultado="conflicto",
+            payload_hash=payload_hash,
+        )
+        return {
+            "idempotency_key": idempotency_key,
+            "estado": "conflicto",
+            "mensaje": (
+                "El claim debe incluir necesidad, donacion, cantidad_asignada "
+                "y organizacion_responsable."
+            ),
+            "entity": ENTIDAD_CLAIM_NECESIDAD,
+            "entity_id": None,
+        }
+
+    try:
+        claim_ts_cliente = _parsear_claim_ts_cliente(
+            payload.get("claim_ts_cliente") or evento.get("client_timestamp")
+        )
+        asignacion = reclamar_necesidad(
+            necesidad_id=necesidad_id,
+            donacion_id=donacion_id,
+            cantidad_asignada=int(cantidad_asignada),
+            organizacion_responsable_id=organizacion_responsable_id,
+            idempotency_key=idempotency_key,
+            claim_ts_cliente=claim_ts_cliente,
+        )
+    except (TypeError, ValueError) as exc:
+        _registrar_evento_sync(
+            idempotency_key=idempotency_key,
+            entidad=ENTIDAD_CLAIM_NECESIDAD,
+            resultado="conflicto",
+            payload_hash=payload_hash,
+        )
+        return {
+            "idempotency_key": idempotency_key,
+            "estado": "conflicto",
+            "mensaje": f"Claim inválido: {exc}",
+            "entity": ENTIDAD_CLAIM_NECESIDAD,
+            "entity_id": None,
+        }
+    except ClaimError as exc:
+        mensaje = str(exc)
+        resultado = "superada" if _es_claim_superado(necesidad_id, mensaje) else "conflicto"
+        _registrar_evento_sync(
+            idempotency_key=idempotency_key,
+            entidad=ENTIDAD_CLAIM_NECESIDAD,
+            resultado=resultado,
+            payload_hash=payload_hash,
+        )
+        return {
+            "idempotency_key": idempotency_key,
+            "estado": resultado,
+            "mensaje": mensaje,
+            "entity": ENTIDAD_CLAIM_NECESIDAD,
+            "entity_id": None,
+        }
+
+    _registrar_evento_sync(
+        idempotency_key=idempotency_key,
+        entidad=ENTIDAD_CLAIM_NECESIDAD,
+        entity_id=asignacion.id,
+        resultado="ok",
+        payload_hash=payload_hash,
+    )
+
+    registrar_auditoria_sync(
+        usuario=usuario,
+        entidad=ENTIDAD_CLAIM_NECESIDAD,
+        operacion="reclamar",
+        objeto=asignacion,
+        idempotency_key=idempotency_key,
+        payload_hash=payload_hash,
+    )
+
+    return {
+        "idempotency_key": idempotency_key,
+        "estado": "ok",
+        "mensaje": "Claim arbitrado por el servidor.",
+        "entity": ENTIDAD_CLAIM_NECESIDAD,
+        "entity_id": str(asignacion.id),
+        "estado_claim": asignacion.estado_claim,
+        "necesidad": str(asignacion.necesidad_id),
+        "donacion": str(asignacion.donacion_id),
+    }
+
+
 @transaction.atomic
 def procesar_evento_sync(evento: dict[str, Any], usuario=None) -> dict[str, Any]:
     idempotency_key = evento.get("idempotency_key")
     entidad = normalizar_entidad(evento.get("entity", ""))
     payload = evento.get("payload", {})
+
+    if entidad == ENTIDAD_CLAIM_NECESIDAD:
+        return procesar_claim_necesidad_sync(evento, usuario=usuario)
 
     if not idempotency_key:
         return {
@@ -116,18 +316,28 @@ def procesar_evento_sync(evento: dict[str, Any], usuario=None) -> dict[str, Any]
     ).first()
 
     if evento_existente:
-        return {
-            "idempotency_key": idempotency_key,
-            "estado": "duplicado",
-            "mensaje": "Evento ya procesado anteriormente.",
-            "entity": evento_existente.entity,
-            "entity_id": str(evento_existente.entity_id)
-            if evento_existente.entity_id
-            else None,
-        }
+        return _respuesta_duplicado(evento_existente)
 
     modelo = MODELOS_SINCRONIZABLES[entidad]
     payload_hash = generar_hash_payload(payload)
+
+    if entidad == "asignacion" and payload.get("estado_claim") == Asignacion.EstadoClaim.CONFIRMADA:
+        _registrar_evento_sync(
+            idempotency_key=idempotency_key,
+            entidad=entidad,
+            resultado="conflicto",
+            payload_hash=payload_hash,
+        )
+        return {
+            "idempotency_key": idempotency_key,
+            "estado": "conflicto",
+            "mensaje": (
+                "No se puede crear una asignación confirmada por sync común. "
+                "Usa entity='claim_necesidad' para que el servidor arbitre el claim."
+            ),
+            "entity": entidad,
+            "entity_id": None,
+        }
 
     entity_id = payload.get("id")
 
@@ -153,9 +363,9 @@ def procesar_evento_sync(evento: dict[str, Any], usuario=None) -> dict[str, Any]
 
     if objeto_existente:
         if version_cliente is not None and version_cliente < objeto_existente.version:
-            EventoSincronizado.objects.create(
+            _registrar_evento_sync(
                 idempotency_key=idempotency_key,
-                entity=entidad,
+                entidad=entidad,
                 entity_id=entity_id,
                 resultado="conflicto",
                 payload_hash=payload_hash,
@@ -185,9 +395,9 @@ def procesar_evento_sync(evento: dict[str, Any], usuario=None) -> dict[str, Any]
         resultado = "ok"
         operacion = "crear"
 
-    EventoSincronizado.objects.create(
+    _registrar_evento_sync(
         idempotency_key=idempotency_key,
-        entity=entidad,
+        entidad=entidad,
         entity_id=objeto.id,
         resultado=resultado,
         payload_hash=payload_hash,
