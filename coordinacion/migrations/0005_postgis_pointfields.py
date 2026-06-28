@@ -7,7 +7,7 @@ from django.contrib.gis.geos import Point
 from django.db import migrations, models
 
 COORD_RE = re.compile(
-    r"^\s*(?:POINT\s*\()?\s*"
+    r"^\s*(?P<wkt>POINT\s*\()?\s*"
     r"(?P<a>-?\d+(?:\.\d+)?)"
     r"[\s,;]+"
     r"(?P<b>-?\d+(?:\.\d+)?)"
@@ -31,11 +31,14 @@ def _point_desde_texto(valor):
     a = float(match.group("a"))
     b = float(match.group("b"))
 
-    # KoBo geopoint y capturas de campo suelen llegar como lat lon.
+    if match.group("wkt"):
+        if -180 <= a <= 180 and -90 <= b <= 90:
+            return _crear_point(b, a)
+        return None
+
     if -90 <= a <= 90 and -180 <= b <= 180:
         return _crear_point(a, b)
 
-    # Fallback para WKT/concepto lon lat.
     if -180 <= a <= 180 and -90 <= b <= 90:
         return _crear_point(b, a)
 
@@ -98,28 +101,19 @@ class Migration(migrations.Migration):
             preserve_default=False,
         ),
         migrations.RunPython(migrar_texto_a_puntos, migrations.RunPython.noop),
-        migrations.RemoveField(
-            model_name="centrosalud",
-            name="geolocalizacion",
-        ),
+        migrations.RemoveField(model_name="centrosalud", name="geolocalizacion"),
         migrations.RenameField(
             model_name="centrosalud",
             old_name="geolocalizacion_punto",
             new_name="geolocalizacion",
         ),
-        migrations.RemoveField(
-            model_name="donacion",
-            name="ubicacion_actual",
-        ),
+        migrations.RemoveField(model_name="donacion", name="ubicacion_actual"),
         migrations.RenameField(
             model_name="donacion",
             old_name="ubicacion_actual_punto",
             new_name="ubicacion_actual",
         ),
-        migrations.RemoveField(
-            model_name="envio",
-            name="geolocalizacion_entrega",
-        ),
+        migrations.RemoveField(model_name="envio", name="geolocalizacion_entrega"),
         migrations.RenameField(
             model_name="envio",
             old_name="geolocalizacion_entrega_punto",
