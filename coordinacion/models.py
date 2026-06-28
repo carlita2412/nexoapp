@@ -282,3 +282,22 @@ class Foto(BaseModelo):
 
     def __str__(self):
         return f"Foto {self.id} ({self.estado})"
+
+
+class KoboCursor(models.Model):
+    class TipoFormulario(models.TextChoices):
+        NECESIDAD = "necesidad", "Necesidad"
+        DONACION = "donacion", "Donación"
+
+    tipo_formulario = models.CharField(
+        max_length=20,
+        choices=TipoFormulario.choices,
+        unique=True,
+    )
+    asset_uid = models.CharField(max_length=120, blank=True)
+    ultimo_submission_time = models.DateTimeField(null=True, blank=True)
+    ultimo_uuid = models.CharField(max_length=120, blank=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"KoBo {self.tipo_formulario}: {self.ultimo_submission_time or 'sin cursor'}"
