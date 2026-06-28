@@ -32,6 +32,23 @@ KOBO_ASSET_NECESIDADES=asset_uid_necesidades
 KOBO_ASSET_DONACIONES=asset_uid_donaciones
 ```
 
+## Catálogos iniciales obligatorios
+
+Antes de probar la ingesta KoBo y el matching, carga los catálogos base en la base de datos y expórtalos como `media` para los formularios KoBo:
+
+```bash
+python manage.py exportar_catalogos_kobo kobo_forms/media
+```
+
+Valida que existan, como mínimo:
+
+- Organizaciones.
+- Centros de salud.
+- Catálogo de ítems.
+- Usuarios con rol.
+
+Estos catálogos son parte crítica del vocabulario controlado. Sin ellos, el matching pierde calidad porque los formularios tienden a capturar texto libre y el prompt maestro exige dropdowns/catálogos para reducir errores de campo.
+
 ## Uso del módulo KoBo
 
 ### Pull manual o cron
@@ -56,6 +73,7 @@ La ingesta usa `_uuid` como fuente de verdad: genera UUID estable para la entida
 ## Siguiente incremento sugerido
 
 1. Completar XLSForm finales en `kobo_forms/`.
-2. Exportar catálogos reales a CSV para desplegables KoBo.
-3. Agregar pruebas con fixtures reales de submissions.
-4. Conectar fotos de confirmación en endpoint multipart separado.
+2. Agregar fixtures/seed inicial para organizaciones, centros, ítems y usuarios con rol.
+3. Agregar prueba de exportación de catálogos a `kobo_forms/media`.
+4. Agregar pruebas con fixtures reales de submissions.
+5. Conectar fotos de confirmación en endpoint multipart separado.
