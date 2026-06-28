@@ -74,6 +74,10 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Redirección posterior al login/logout de la API navegable de DRF.
+LOGIN_REDIRECT_URL = "/api/v1/"
+LOGOUT_REDIRECT_URL = "/api-auth/login/"
+
 # --- Almacenamiento de fotos de entrega ---
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
