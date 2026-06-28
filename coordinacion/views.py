@@ -4,10 +4,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.utils.dateparse import parse_datetime
 from .permisos import (
+    SOLO_ADMIN,
     SOLO_COORDINACION,
     TODOS_OPERATIVOS,
     EsCoordinacionParaEscribir,
     puede_escribir,
+    puede_reclamar_necesidad,
 )
 from .models import (
     Asignacion,
@@ -75,14 +77,14 @@ def sync(request):
 
 class OrganizacionViewSet(viewsets.ModelViewSet):
     # Alta/baja de organizaciones de la alianza: solo admin.
-    roles_escritura = {"admin"}
+    roles_escritura = SOLO_ADMIN
     queryset = Organizacion.objects.all().order_by("nombre")
     serializer_class = OrganizacionSerializer
 
 
 class CatalogoViewSet(viewsets.ModelViewSet):
-    # El catálogo es vocabulario crítico del matching: lo gestiona coordinación.
-    roles_escritura = SOLO_COORDINACION
+    # El catálogo es vocabulario crítico del matching: solo admin lo administra.
+    roles_escritura = SOLO_ADMIN
     queryset = Catalogo.objects.all().order_by("nombre")
     serializer_class = CatalogoSerializer
 
@@ -95,7 +97,7 @@ class CentroSaludViewSet(viewsets.ModelViewSet):
 
 
 class NecesidadViewSet(viewsets.ModelViewSet):
-    # Captura de necesidades y claim: roles operativos.
+    # Captura de necesidades: roles operativos. El claim tiene control adicional.
     roles_escritura = TODOS_OPERATIVOS
     queryset = Necesidad.objects.all().order_by("-created_at")
     serializer_class = NecesidadSerializer
@@ -144,6 +146,20 @@ class NecesidadViewSet(viewsets.ModelViewSet):
         necesidad = self.get_object()
         serializer = ClaimSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        if not puede_reclamar_necesidad(
+            request.user,
+            serializer.validated_data["organizacion_responsable_id"],
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Tu rol no puede reclamar esta necesidad para esa "
+                        "organización."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         try:
             asignacion = reclamar_necesidad(
