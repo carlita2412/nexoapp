@@ -11,6 +11,21 @@ Este incremento inicia el desarrollo operativo del **módulo KoBo**: ingesta inc
 - Idempotencia obligatoria con `idempotency_key`.
 - Sin pacientes ni PII clínica innecesaria.
 - Sin vendor lock-in: Django + DRF + django-q2 + KoBoToolbox.
+- Autenticación requerida por defecto y permisos mínimos por rol antes de abrir la API.
+
+## Seguridad mínima antes de abrir la API
+
+La API aplica RBAC con los roles `admin`, `coordinador`, `campo` y `lectura`.
+El healthcheck `/api/v1/salud/` es público; el resto de rutas sensibles requiere autenticación.
+
+| Acción | admin | coordinador | campo | lectura |
+|---|---:|---:|---:|---:|
+| Crear necesidades | Sí | Sí | Sí | No |
+| Crear donaciones | Sí | Sí | Sí | No |
+| Reclamar necesidad | Sí | Sí | Limitado a su organización | No |
+| Ver matching | Sí | Sí | Sí | Sí |
+| Confirmar entrega | Sí | Sí | Sí | No |
+| Administrar catálogos | Sí | No | No | No |
 
 ## Instalación local
 
