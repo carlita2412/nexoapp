@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from .geo import normalizar_point, point_a_dict
 from .models import (
     Asignacion,
     Catalogo,
@@ -9,6 +10,22 @@ from .models import (
     Necesidad,
     Organizacion,
 )
+
+
+class PuntoGeoSerializerField(serializers.Field):
+    """Representa PointField como GeoJSON simple compatible con Leaflet."""
+
+    def to_representation(self, value):
+        return point_a_dict(value)
+
+    def to_internal_value(self, data):
+        point = normalizar_point(data)
+        if data not in (None, "") and point is None:
+            raise serializers.ValidationError(
+                "Coordenadas inválidas. Usa GeoJSON Point, [lon, lat], "
+                "{'lat': ..., 'lon': ...} o texto KoBo 'lat lon'."
+            )
+        return point
 
 
 class OrganizacionSerializer(serializers.ModelSerializer):
@@ -24,6 +41,8 @@ class CatalogoSerializer(serializers.ModelSerializer):
 
 
 class CentroSaludSerializer(serializers.ModelSerializer):
+    geolocalizacion = PuntoGeoSerializerField(required=False, allow_null=True)
+
     class Meta:
         model = CentroSalud
         fields = "__all__"
@@ -36,6 +55,8 @@ class NecesidadSerializer(serializers.ModelSerializer):
 
 
 class DonacionSerializer(serializers.ModelSerializer):
+    ubicacion_actual = PuntoGeoSerializerField(required=False, allow_null=True)
+
     class Meta:
         model = Donacion
         fields = "__all__"
@@ -48,6 +69,8 @@ class AsignacionSerializer(serializers.ModelSerializer):
 
 
 class EnvioSerializer(serializers.ModelSerializer):
+    geolocalizacion_entrega = PuntoGeoSerializerField(required=False, allow_null=True)
+
     class Meta:
         model = Envio
         fields = "__all__"
