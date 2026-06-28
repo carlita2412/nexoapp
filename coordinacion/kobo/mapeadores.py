@@ -8,9 +8,12 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from coordinacion.geo import normalizar_point
+from coordinacion.kobo.contrato import CONTRATO_KOBO
 from coordinacion.models import Catalogo, CentroSalud, Donacion, Necesidad, Organizacion
 
 NAMESPACE_KOBO = uuid.UUID("6c56b443-0ad2-4af7-9668-a375ff3ebf20")
+NIVELES_TRIAGE_VALIDOS = {choice[0] for choice in Necesidad.NivelTriage.choices}
+CONDICIONES_DONACION_VALIDAS = {choice[0] for choice in Donacion.Condicion.choices}
 
 
 class MapeoKoboError(ValueError):
@@ -22,6 +25,46 @@ def _valor(submission: dict[str, Any], *claves: str, default: Any = None) -> Any
         if clave in submission and submission[clave] not in (None, ""):
             return submission[clave]
     return default
+
+
+def _tiene_algun_campo(submission: dict[str, Any], claves: tuple[str, ...]) -> bool:
+    return any(clave in submission and submission[clave] not in (None, "") for clave in claves)
+
+
+def _validar_campos_requeridos(tipo: str, submission: dict[str, Any]) -> None:
+    faltantes = []
+    for campo in CONTRATO_KOBO[tipo]:
+        if campo.requerido and not _tiene_algun_campo(submission, campo.nombres_aceptados):
+            faltantes.append("/".join(campo.nombres_aceptados))
+
+    if tipo == "necesidad" and not (
+        _tiene_algun_campo(submission, ("reportada_por_id", "organizacion_id", "reportada_por"))
+        or _tiene_algun_campo(
+            submission,
+            ("reportada_por_nombre", "organizacion_nombre", "nombre_organizacion"),
+        )
+    ):
+        faltantes.append("reportada_por_id o reportada_por_nombre")
+
+    if tipo == "donacion" and not (
+        _tiene_algun_campo(submission, ("donante_id", "organizacion_id", "donante"))
+        or _tiene_algun_campo(
+            submission,
+            ("donante_nombre", "organizacion_nombre", "nombre_organizacion"),
+        )
+    ):
+        faltantes.append("donante_id o donante_nombre")
+
+    if faltantes:
+        raise MapeoKoboError(
+            f"Submission KoBo de {tipo} incompleta. Faltan campos: {', '.join(faltantes)}."
+        )
+
+
+def validar_submission_kobo(tipo: str, submission: dict[str, Any]) -> None:
+    if tipo not in CONTRATO_KOBO:
+        raise MapeoKoboError(f"Tipo KoBo no soportado: {tipo}")
+    _validar_campos_requeridos(tipo, submission)
 
 
 def _uuid_submission(submission: dict[str, Any]) -> str:
@@ -67,9 +110,12 @@ def _booleano(valor: Any) -> bool:
 
 def _punto(valor: Any, campo: str):
     try:
-        return normalizar_point(valor)
+        punto = normalizar_point(valor)
     except (TypeError, ValueError) as exc:
         raise MapeoKoboError(f"{campo} contiene coordenadas inválidas.") from exc
+    if punto is None:
+        raise MapeoKoboError(f"{campo} es obligatorio y debe contener coordenadas válidas.")
+    return punto
 
 
 def _catalogo(submission: dict[str, Any]) -> Catalogo:
@@ -117,7 +163,28 @@ def _organizacion(submission: dict[str, Any], *, campo_id: str, campo_nombre: st
     return organizacion
 
 
+def _nivel_triage(submission: dict[str, Any]) -> str:
+    valor = str(
+        _valor(submission, "nivel_triage", "triage", default=Necesidad.NivelTriage.IMPORTANTE)
+    ).strip()
+    if valor not in NIVELES_TRIAGE_VALIDOS:
+        raise MapeoKoboError(
+            "nivel_triage inválido. Usa: " + ", ".join(sorted(NIVELES_TRIAGE_VALIDOS))
+        )
+    return valor
+
+
+def _condicion_donacion(submission: dict[str, Any]) -> str:
+    valor = str(_valor(submission, "condicion", default=Donacion.Condicion.NUEVO)).strip()
+    if valor not in CONDICIONES_DONACION_VALIDAS:
+        raise MapeoKoboError(
+            "condicion inválida. Usa: " + ", ".join(sorted(CONDICIONES_DONACION_VALIDAS))
+        )
+    return valor
+
+
 def mapear_necesidad(submission: dict[str, Any]) -> dict[str, Any]:
+    validar_submission_kobo("necesidad", submission)
     submission_uuid = _uuid_submission(submission)
     centro = _centro(submission)
     item = _catalogo(submission)
@@ -136,7 +203,7 @@ def mapear_necesidad(submission: dict[str, Any]) -> dict[str, Any]:
             "cantidad_solicitada",
         ),
         "cantidad_cubierta": 0,
-        "nivel_triage": _valor(submission, "nivel_triage", "triage", default=Necesidad.NivelTriage.IMPORTANTE),
+        "nivel_triage": _nivel_triage(submission),
         "requisitos_operacion": {
             "requiere_electricidad": _booleano(_valor(submission, "requiere_electricidad", default=False)),
             "requiere_oxigeno": _booleano(_valor(submission, "requiere_oxigeno", default=False)),
@@ -159,6 +226,7 @@ def mapear_necesidad(submission: dict[str, Any]) -> dict[str, Any]:
 
 
 def mapear_donacion(submission: dict[str, Any]) -> dict[str, Any]:
+    validar_submission_kobo("donacion", submission)
     submission_uuid = _uuid_submission(submission)
     item = _catalogo(submission)
     donante = _organizacion(
@@ -174,7 +242,7 @@ def mapear_donacion(submission: dict[str, Any]) -> dict[str, Any]:
         "donante": str(donante.id),
         "item": str(item.id),
         "cantidad": _entero(_valor(submission, "cantidad", default=1), "cantidad"),
-        "condicion": _valor(submission, "condicion", default=Donacion.Condicion.NUEVO),
+        "condicion": _condicion_donacion(submission),
         "vencimiento": parse_date(str(vencimiento)) if vencimiento else None,
         "certificacion": _valor(submission, "certificacion", default=""),
         "ubicacion_actual": _punto(ubicacion, "ubicacion_actual"),
