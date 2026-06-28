@@ -4,6 +4,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from coordinacion.auditoria import ACCION_SUBIR_FOTO, registrar_auditoria
 from coordinacion.models import Foto
 from coordinacion.permisos import TODOS_OPERATIVOS
 from coordinacion.serializers import FotoSerializer, FotoSubidaSerializer
@@ -62,6 +63,21 @@ class FotoViewSet(
             envio=datos["envio"],
             original=imagen,
             estado=Foto.Estado.RECIBIDA,
+        )
+
+        registrar_auditoria(
+            usuario=request.user,
+            accion=ACCION_SUBIR_FOTO,
+            entidad="foto",
+            entidad_id=foto.id,
+            detalle={
+                "endpoint": request.path,
+                "metodo": request.method,
+                "envio_id": str(foto.envio_id),
+                "idempotency_key": str(foto.idempotency_key),
+                "bytes_original": foto.bytes_original or getattr(imagen, "size", None),
+                "estado": foto.estado,
+            },
         )
 
         encolar_procesamiento(foto.id)
