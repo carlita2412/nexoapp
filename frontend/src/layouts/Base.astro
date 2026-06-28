@@ -14,6 +14,8 @@ const { title = 'Nexo PWA' } = Astro.props;
   </head>
   <body>
     <slot />
-    <script type="module" src="/src/app.js"></script>
+    <script>
+      import '../app.js';
+    </script>
   </body>
 </html>
