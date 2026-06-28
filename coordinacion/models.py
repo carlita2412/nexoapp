@@ -1,7 +1,7 @@
 import uuid
 
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.contrib.gis.db import models
 
 
 class BaseModelo(models.Model):
@@ -69,7 +69,7 @@ class CentroSalud(BaseModelo):
         choices=EstadoOperativo.choices,
         default=EstadoOperativo.OPERATIVO,
     )
-    geolocalizacion = models.CharField(max_length=100, blank=True)
+    geolocalizacion = models.PointField(srid=4326, null=True, blank=True)
     estado = models.CharField(max_length=120)
     municipio = models.CharField(max_length=120)
 
@@ -137,7 +137,7 @@ class Donacion(BaseModelo):
     condicion = models.CharField(max_length=30, choices=Condicion.choices)
     vencimiento = models.DateField(null=True, blank=True)
     certificacion = models.TextField(blank=True)
-    ubicacion_actual = models.CharField(max_length=100, blank=True)
+    ubicacion_actual = models.PointField(srid=4326, null=True, blank=True)
     ubicacion_texto = models.CharField(max_length=255, blank=True)
     estado = models.CharField(
         max_length=20,
@@ -202,7 +202,8 @@ class Envio(BaseModelo):
     )
     responsable = models.CharField(max_length=255)
     foto_confirmacion_ref = models.CharField(max_length=500, blank=True)
-    geolocalizacion_entrega = models.CharField(max_length=100, blank=True)
+    geolocalizacion_entrega = models.PointField(srid=4326, null=True, blank=True)
+    geolocalizacion_entrega_texto = models.CharField(max_length=255, blank=True)
     timestamp_entrega = models.DateTimeField(null=True, blank=True)
     recibido_por = models.CharField(max_length=255, blank=True)
     notas = models.TextField(blank=True)
