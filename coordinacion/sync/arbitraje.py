@@ -16,6 +16,7 @@ def reclamar_necesidad(
     cantidad_asignada,
     organizacion_responsable_id,
     idempotency_key=None,
+    claim_ts_cliente=None,
 ) -> Asignacion:
     # Idempotencia (regla de oro #4): si este claim ya se procesó (ACK perdido +
     # reintento), devolvemos la asignación existente sin volver a asignar.
@@ -67,7 +68,7 @@ def reclamar_necesidad(
         cantidad_asignada=cantidad_asignada,
         organizacion_responsable=organizacion,
         estado_claim=Asignacion.EstadoClaim.CONFIRMADA,
-        claim_ts_cliente=ahora,
+        claim_ts_cliente=claim_ts_cliente or ahora,
         claim_ts_servidor=ahora,
         estado_logistico=Asignacion.EstadoLogistico.PENDIENTE,
         idempotency_key=idempotency_key,
