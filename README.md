@@ -20,7 +20,8 @@ Este repositorio contiene el backend operativo de la API `v1` de Nexo. Actualmen
 - Webhook alternativo para KoBoToolbox.
 - Endpoint multipart para fotos de confirmación de entrega.
 - Compresión asíncrona de fotos con `django-q2`.
-- Pruebas de idempotencia, matching, delta sync, claim, RBAC y fotos.
+- Seed inicial idempotente de organizaciones, catálogos, centros de salud y usuarios base.
+- Pruebas de idempotencia, matching, delta sync, claim, RBAC, fotos y seed inicial.
 
 ## Stack actual
 
@@ -48,6 +49,7 @@ Este repositorio contiene el backend operativo de la API `v1` de Nexo. Actualmen
 - API sensible cerrada por autenticación, salvo healthcheck y webhook KoBo protegido opcionalmente por token.
 - Permisos mínimos por rol.
 - Matching sin sugerir equipos incompatibles o que requieren reparación.
+- Seed inicial idempotente para operar con catálogos y organizaciones base sin texto libre.
 - Fotos de entrega comprimidas a presupuesto bajo de datos y original descartado tras procesamiento.
 - Sin captura de pacientes ni PII clínica innecesaria.
 
@@ -59,6 +61,7 @@ python -m venv .venv
 pip install -r requirements.txt
 cp .env.example .env
 python manage.py migrate
+python manage.py seed_inicial --password-inicial 'Cambia-esta-clave-123'
 python manage.py runserver
 ```
 
@@ -70,6 +73,7 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env
 python manage.py migrate
+python manage.py seed_inicial --password-inicial "Cambia-esta-clave-123"
 python manage.py runserver
 ```
 
@@ -83,6 +87,64 @@ Admin Django:
 
 ```text
 http://127.0.0.1:8000/admin/
+```
+
+## Seed inicial / fixtures base
+
+El comando `seed_inicial` carga datos mínimos para que KoBo, matching y usuarios puedan operar sin depender de texto libre ni configuraciones manuales incompletas.
+
+```bash
+python manage.py seed_inicial --password-inicial 'Cambia-esta-clave-123'
+```
+
+También se puede usar variable de entorno para no dejar la clave en el historial del shell:
+
+```bash
+export NEXO_SEED_PASSWORD='Cambia-esta-clave-123'
+python manage.py seed_inicial
+```
+
+En Windows PowerShell:
+
+```powershell
+$env:NEXO_SEED_PASSWORD="Cambia-esta-clave-123"
+python manage.py seed_inicial
+```
+
+El seed es **idempotente**: se puede ejecutar varias veces sin duplicar registros. Usa UUID estables para organizaciones y centros, y `codigo` único para catálogos.
+
+Datos creados:
+
+- 5 organizaciones base: Digisalud, alianza médica, red de centros, voluntarios de campo y donantes privados.
+- 10 catálogos médicos iniciales: oxígeno, monitor de signos vitales, tensiómetro, glucómetro, solución fisiológica, guantes, mascarillas, kit de curas y generador.
+- 4 centros de salud iniciales con capacidades operativas: electricidad, agua, oxígeno y personal técnico.
+- 4 usuarios base: `nexo_admin`, `nexo_coordinador`, `nexo_campo`, `nexo_lectura`.
+
+Usuarios documentados:
+
+| Usuario | Rol | Uso |
+|---|---|---|
+| `nexo_admin` | `admin` | Administración de organizaciones, catálogos y operación completa. |
+| `nexo_coordinador` | `coordinador` | Coordinación operativa, matching, reclamos y seguimiento. |
+| `nexo_campo` | `campo` | Captura y actualización en terreno. |
+| `nexo_lectura` | `lectura` | Consulta de datos y matching sin escritura. |
+
+Por seguridad, no hay contraseñas hardcodeadas en el repositorio. Si se ejecuta sin `--password-inicial` ni `NEXO_SEED_PASSWORD`, los usuarios se crean sin contraseña usable. Para asignar o reemplazar la contraseña temporal de usuarios existentes:
+
+```bash
+python manage.py seed_inicial --password-inicial 'Nueva-clave-temporal-123' --reset-passwords
+```
+
+Después del primer ingreso, cambia las contraseñas temporales desde el admin de Django o con el flujo operativo definido para producción.
+
+Opciones útiles:
+
+```bash
+# Cargar solo organizaciones, catálogos y centros, sin usuarios
+python manage.py seed_inicial --sin-usuarios
+
+# Reaplicar seed y resetear passwords de usuarios existentes
+python manage.py seed_inicial --password-inicial 'Nueva-clave-temporal-123' --reset-passwords
 ```
 
 ## Variables de entorno
@@ -111,6 +173,7 @@ Variables relevantes:
 | `KOBO_ASSET_DONACIONES` | UID del formulario KoBo de donaciones. |
 | `KOBO_WEBHOOK_TOKEN` | Token opcional para autorizar webhooks KoBo. |
 | `KOBO_PULL_LIMIT` | Límite de submissions por consulta KoBo. |
+| `NEXO_SEED_PASSWORD` | Password temporal opcional para usuarios creados por `seed_inicial`. |
 
 ## Seguridad y roles
 
@@ -214,23 +277,6 @@ Content-Type: application/json
 }
 ```
 
-Respuesta:
-
-```json
-{
-  "cursor": "2026-06-28T10:00:00.000000+00:00",
-  "resultados": [
-    {
-      "idempotency_key": "uuid-evento",
-      "estado": "ok",
-      "mensaje": "Evento procesado.",
-      "entity": "necesidad",
-      "entity_id": "uuid-entidad"
-    }
-  ]
-}
-```
-
 Estados posibles por evento:
 
 - `ok`: procesado.
@@ -264,11 +310,7 @@ El matching devuelve donaciones compatibles para una necesidad. Valida:
 - La donación debe estar `disponible`.
 - El ítem de la donación debe coincidir con el ítem solicitado.
 - La donación no debe requerir reparación.
-- El centro debe cumplir los requisitos operativos de la necesidad:
-  - electricidad,
-  - oxígeno,
-  - agua,
-  - personal técnico entrenado.
+- El centro debe cumplir los requisitos operativos de la necesidad: electricidad, oxígeno, agua y personal técnico entrenado.
 
 Endpoint:
 
@@ -410,6 +452,7 @@ pytest coordinacion/tests/test_idempotencia.py -q
 pytest coordinacion/tests/test_arbitraje_claim.py -q
 pytest coordinacion/tests/test_sync_delta.py -q
 pytest coordinacion/tests/test_fotos.py -q
+pytest coordinacion/tests/test_seed_inicial.py -q
 ```
 
 Coberturas funcionales existentes:
@@ -423,6 +466,7 @@ Coberturas funcionales existentes:
 - Matching por compatibilidad operativa.
 - Claim parcial, total, duplicado y no sobre-asignado.
 - Subida de fotos, compresión, idempotencia y permisos.
+- Seed inicial idempotente de organizaciones, catálogos, centros y usuarios por rol.
 
 ## Comandos útiles
 
@@ -430,6 +474,9 @@ Coberturas funcionales existentes:
 # Migraciones
 python manage.py makemigrations
 python manage.py migrate
+
+# Seed inicial
+python manage.py seed_inicial --password-inicial 'Cambia-esta-clave-123'
 
 # Servidor local
 python manage.py runserver
@@ -450,7 +497,6 @@ pytest -q
 
 - Configurar base de datos de producción con PostgreSQL/PostGIS.
 - Mover `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` y configuración de base de datos a variables de entorno reales.
-- Cargar seed/fixtures iniciales de organizaciones, centros, catálogos y usuarios.
 - Validar formularios KoBo reales contra los mapeadores actuales.
 - Agregar auditoría efectiva en acciones críticas.
 - Revisar CORS para dominios finales de la PWA/portal.
