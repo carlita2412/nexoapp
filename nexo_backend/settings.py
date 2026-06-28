@@ -1,19 +1,20 @@
-from pathlib import Path
-
+import os
 import environ
+from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-import os
+load_dotenv(BASE_DIR / ".env")
 
-GDAL_LIBRARY_PATH = os.environ.get(
-    "GDAL_LIBRARY_PATH",
-    r"C:\OSGeo4W\bin\gdal308.dll",
-)
+if os.name == "nt":
+    QGIS_BIN_PATH = os.environ.get("QGIS_BIN_PATH")
 
-GEOS_LIBRARY_PATH = os.environ.get(
-    "GEOS_LIBRARY_PATH",
-    r"C:\OSGeo4W\bin\geos_c.dll",
-)
+    if QGIS_BIN_PATH and os.path.exists(QGIS_BIN_PATH):
+        os.add_dll_directory(QGIS_BIN_PATH)
+
+    GDAL_LIBRARY_PATH = os.environ.get("GDAL_LIBRARY_PATH")
+    GEOS_LIBRARY_PATH = os.environ.get("GEOS_LIBRARY_PATH")
+    
 env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, []),
@@ -28,6 +29,8 @@ env = environ.Env(
 )
 
 env.read_env(BASE_DIR / ".env")
+GDAL_LIBRARY_PATH = env("GDAL_LIBRARY_PATH", default=None)
+GEOS_LIBRARY_PATH = env("GEOS_LIBRARY_PATH", default=None)
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
@@ -100,6 +103,8 @@ TEMPLATES = [
 WSGI_APPLICATION = "nexo_backend.wsgi.application"
 
 NEXO_DB_ENGINE = env("NEXO_DB_ENGINE").lower()
+import os
+
 
 if NEXO_DB_ENGINE == "spatialite":
     DATABASES = {
