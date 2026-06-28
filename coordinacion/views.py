@@ -153,6 +153,7 @@ class NecesidadViewSet(viewsets.ModelViewSet):
                 organizacion_responsable_id=serializer.validated_data[
                     "organizacion_responsable_id"
                 ],
+                idempotency_key=serializer.validated_data.get("idempotency_key"),
             )
         except ClaimError as exc:
             return Response(

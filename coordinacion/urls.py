@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .auth_views import LoginToken
+from .fotos.vistas import FotoViewSet
 from .views import (
     AsignacionViewSet,
     CatalogoViewSet,
@@ -22,6 +23,7 @@ router.register(r"necesidades", NecesidadViewSet, basename="necesidad")
 router.register(r"donaciones", DonacionViewSet, basename="donacion")
 router.register(r"asignaciones", AsignacionViewSet, basename="asignacion")
 router.register(r"envios", EnvioViewSet, basename="envio")
+router.register(r"fotos", FotoViewSet, basename="foto")
 
 urlpatterns = [
     path("salud/", salud, name="salud"),

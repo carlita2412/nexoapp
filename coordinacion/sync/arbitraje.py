@@ -15,7 +15,17 @@ def reclamar_necesidad(
     donacion_id,
     cantidad_asignada,
     organizacion_responsable_id,
+    idempotency_key=None,
 ) -> Asignacion:
+    # Idempotencia (regla de oro #4): si este claim ya se procesó (ACK perdido +
+    # reintento), devolvemos la asignación existente sin volver a asignar.
+    if idempotency_key is not None:
+        existente = Asignacion.objects.filter(
+            idempotency_key=idempotency_key
+        ).first()
+        if existente is not None:
+            return existente
+
     necesidad = Necesidad.objects.select_for_update().get(id=necesidad_id)
     donacion = Donacion.objects.select_for_update().get(id=donacion_id)
     organizacion = Organizacion.objects.get(id=organizacion_responsable_id)
@@ -60,6 +70,7 @@ def reclamar_necesidad(
         claim_ts_cliente=ahora,
         claim_ts_servidor=ahora,
         estado_logistico=Asignacion.EstadoLogistico.PENDIENTE,
+        idempotency_key=idempotency_key,
     )
 
     necesidad.cantidad_cubierta += cantidad_asignada

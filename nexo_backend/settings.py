@@ -73,6 +73,15 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# --- Almacenamiento de fotos de entrega ---
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Presupuesto y límites de fotos (§2). El cliente comprime antes de subir; el
+# servidor re-comprime para garantizar el objetivo.
+FOTO_OBJETIVO_BYTES = 100_000          # foto de entrega < 100 KB
+FOTO_MAX_SUBIDA_BYTES = 5 * 1024 * 1024  # rechazo defensivo de subidas enormes
+
 REST_FRAMEWORK = {
     # En campo el cliente offline usa Token (cabecera Authorization: Token <key>);
     # Session habilita la API navegable y el admin durante desarrollo.

@@ -169,6 +169,7 @@ class Asignacion(BaseModelo):
         Organizacion,
         on_delete=models.PROTECT,
     )
+    idempotency_key = models.UUIDField(null=True, blank=True, unique=True)
     estado_claim = models.CharField(
         max_length=20,
         choices=EstadoClaim.choices,
@@ -253,3 +254,31 @@ class Usuario(AbstractUser):
         choices=Rol.choices,
         default=Rol.CAMPO,
     )
+
+
+class Foto(BaseModelo):
+    """
+    Foto de confirmación de entrega. Se sube por separado (multipart), se procesa
+    en cola y se comprime a < 100 KB. El original se descarta tras comprimir
+    (presupuesto de datos §2 + privacidad §7).
+    """
+
+    class Estado(models.TextChoices):
+        RECIBIDA = "recibida", "Recibida"
+        PROCESANDO = "procesando", "Procesando"
+        LISTA = "lista", "Lista"
+        ERROR = "error", "Error"
+
+    idempotency_key = models.UUIDField(unique=True)
+    envio = models.ForeignKey(Envio, on_delete=models.PROTECT, related_name="fotos")
+    original = models.FileField(upload_to="fotos/orig/", null=True, blank=True)
+    comprimida = models.FileField(upload_to="fotos/comp/", null=True, blank=True)
+    estado = models.CharField(
+        max_length=20, choices=Estado.choices, default=Estado.RECIBIDA
+    )
+    bytes_original = models.PositiveIntegerField(null=True, blank=True)
+    bytes_comprimida = models.PositiveIntegerField(null=True, blank=True)
+    error_detalle = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"Foto {self.id} ({self.estado})"
