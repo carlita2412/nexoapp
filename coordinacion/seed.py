@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from django.contrib.auth.hashers import make_password
+from django.contrib.gis.geos import Point
 
 from coordinacion.models import Catalogo, CentroSalud, Organizacion, Usuario
 
@@ -15,6 +16,22 @@ def uuid_seed(clave: str) -> uuid.UUID:
     """Genera UUID estable para que el seed sea idempotente entre ambientes."""
 
     return uuid.uuid5(NAMESPACE_SEED, clave)
+
+
+def point_desde_lat_lon(valor: str | tuple[float, float] | None) -> Point | None:
+    """Convierte coordenadas lat,lon del seed a Point(lon, lat) SRID 4326."""
+
+    if valor in (None, ""):
+        return None
+
+    if isinstance(valor, str):
+        lat_texto, lon_texto = [parte.strip() for parte in valor.split(",", maxsplit=1)]
+        latitud = float(lat_texto)
+        longitud = float(lon_texto)
+    else:
+        latitud, longitud = valor
+
+    return Point(longitud, latitud, srid=4326)
 
 
 @dataclass(frozen=True)
@@ -261,6 +278,7 @@ def _upsert_centros() -> None:
     for dato in CENTROS_SALUD:
         clave = dato["clave"]
         valores = {k: v for k, v in dato.items() if k != "clave"}
+        valores["geolocalizacion"] = point_desde_lat_lon(valores.get("geolocalizacion"))
         CentroSalud.objects.update_or_create(
             id=uuid_seed(f"centro_salud:{clave}"),
             defaults=valores,
