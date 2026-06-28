@@ -244,16 +244,17 @@ def _upsert_organizaciones() -> dict[str, Organizacion]:
 
 def _upsert_catalogos() -> None:
     for dato in CATALOGOS:
-        Catalogo.objects.update_or_create(
-            codigo=dato["codigo"],
-            defaults={
-                "id": uuid_seed(f"catalogo:{dato['codigo']}"),
-                "nombre": dato["nombre"],
-                "categoria": dato["categoria"],
-                "unidad": dato["unidad"],
-                "activo": True,
-            },
-        )
+        catalogo = Catalogo.objects.filter(codigo=dato["codigo"]).first()
+        if catalogo is None:
+            catalogo = Catalogo(
+                id=uuid_seed(f"catalogo:{dato['codigo']}"),
+                codigo=dato["codigo"],
+            )
+        catalogo.nombre = dato["nombre"]
+        catalogo.categoria = dato["categoria"]
+        catalogo.unidad = dato["unidad"]
+        catalogo.activo = True
+        catalogo.save()
 
 
 def _upsert_centros() -> None:
