@@ -5,6 +5,7 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 
+from coordinacion.auditoria import accion_sync_para, registrar_auditoria
 from coordinacion.models import (
     Asignacion,
     Catalogo,
@@ -50,8 +51,35 @@ def preparar_datos_modelo(modelo, payload: dict[str, Any]) -> dict[str, Any]:
     return datos
 
 
+def registrar_auditoria_sync(
+    *,
+    usuario,
+    entidad: str,
+    operacion: str,
+    objeto,
+    idempotency_key,
+    payload_hash: str,
+):
+    accion = accion_sync_para(entidad, operacion)
+    if not accion:
+        return
+
+    registrar_auditoria(
+        usuario=usuario,
+        accion=accion,
+        entidad=entidad,
+        entidad_id=getattr(objeto, "id", None),
+        detalle={
+            "origen": "sync",
+            "operacion": operacion,
+            "idempotency_key": str(idempotency_key),
+            "payload_hash": payload_hash,
+        },
+    )
+
+
 @transaction.atomic
-def procesar_evento_sync(evento: dict[str, Any]) -> dict[str, Any]:
+def procesar_evento_sync(evento: dict[str, Any], usuario=None) -> dict[str, Any]:
     idempotency_key = evento.get("idempotency_key")
     entidad = normalizar_entidad(evento.get("entity", ""))
     payload = evento.get("payload", {})
@@ -135,17 +163,28 @@ def procesar_evento_sync(evento: dict[str, Any]) -> dict[str, Any]:
         objeto_existente.save()
 
         resultado = "ok"
+        operacion = "actualizar"
         objeto = objeto_existente
 
     else:
         objeto = modelo.objects.create(**datos)
         resultado = "ok"
+        operacion = "crear"
 
     EventoSincronizado.objects.create(
         idempotency_key=idempotency_key,
         entity=entidad,
         entity_id=objeto.id,
         resultado=resultado,
+        payload_hash=payload_hash,
+    )
+
+    registrar_auditoria_sync(
+        usuario=usuario,
+        entidad=entidad,
+        operacion=operacion,
+        objeto=objeto,
+        idempotency_key=idempotency_key,
         payload_hash=payload_hash,
     )
 
@@ -158,11 +197,11 @@ def procesar_evento_sync(evento: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def procesar_lote_sync(eventos: list[dict[str, Any]]) -> dict[str, Any]:
+def procesar_lote_sync(eventos: list[dict[str, Any]], usuario=None) -> dict[str, Any]:
     resultados = []
 
     for evento in eventos:
-        resultado = procesar_evento_sync(evento)
+        resultado = procesar_evento_sync(evento, usuario=usuario)
         resultados.append(resultado)
 
     return {
