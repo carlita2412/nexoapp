@@ -1,0 +1,140 @@
+---
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Nexo Campo - Mapa operativo</title>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <main x-data="mapaNexo" class="mx-auto flex min-h-screen max-w-7xl flex-col gap-3 p-3 md:p-4">
+      <header class="rounded-2xl bg-slate-900 p-4 text-white shadow-sm">
+        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-300">Nexo Campo</p>
+            <h1 class="text-2xl font-black leading-tight">Mapa operativo offline</h1>
+            <p class="mt-1 max-w-2xl text-sm text-slate-300">
+              Centros de salud, necesidades por triage y donaciones disponibles con cache limitado de OpenStreetMap.
+            </p>
+          </div>
+          <div class="rounded-xl bg-white/10 p-3 text-sm" aria-live="polite">
+            <p class="font-bold" x-text="estado"></p>
+            <p class="text-slate-300">
+              <span x-text="resumen.centros"></span> centros ·
+              <span x-text="resumen.necesidades"></span> necesidades ·
+              <span x-text="resumen.donaciones"></span> donaciones disponibles
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <section class="grid gap-3 md:grid-cols-[20rem_1fr]">
+        <aside class="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div>
+            <label for="token" class="text-sm font-bold text-slate-700">Token API</label>
+            <div class="mt-1 flex gap-2">
+              <input
+                id="token"
+                x-model="token"
+                type="password"
+                autocomplete="off"
+                placeholder="Token DRF"
+                class="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base focus:border-slate-900 focus:outline-none"
+              />
+              <button
+                type="button"
+                x-on:click="guardarTokenLocal"
+                class="min-h-12 rounded-xl bg-slate-900 px-4 font-bold text-white active:scale-95"
+              >
+                Guardar
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">Se guarda solo en este dispositivo para consultar `/api/v1/`.</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 p-3">
+              <input type="checkbox" x-model="filtros.centros" x-on:change="renderizar" />
+              Centros
+            </label>
+            <label class="flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 p-3">
+              <input type="checkbox" x-model="filtros.necesidades" x-on:change="renderizar" />
+              Necesidades
+            </label>
+            <label class="flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 p-3">
+              <input type="checkbox" x-model="filtros.donaciones" x-on:change="renderizar" />
+              Donaciones
+            </label>
+            <label class="flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 p-3">
+              <input type="checkbox" x-model="filtros.soloDisponibles" x-on:change="renderizar" />
+              Solo disponibles
+            </label>
+          </div>
+
+          <div>
+            <label for="triage" class="text-sm font-bold text-slate-700">Triage visible</label>
+            <select
+              id="triage"
+              x-model="filtros.triage"
+              x-on:change="renderizar"
+              class="mt-1 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-base"
+            >
+              <option value="todos">Todos</option>
+              <option value="1_critico">1 - Crítico</option>
+              <option value="2_urgente">2 - Urgente</option>
+              <option value="3_importante">3 - Importante</option>
+              <option value="4_rutinario">4 - Rutinario</option>
+            </select>
+          </div>
+
+          <label class="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+            <input
+              type="checkbox"
+              x-model="filtros.ahorroDatos"
+              x-on:change="cambiarAhorroDatos"
+              class="mt-1"
+            />
+            <span>
+              <strong>Modo ahorro de datos</strong><br />
+              Limita zoom, reduce buffer de tiles y deja que Workbox recicle el cache.
+            </span>
+          </label>
+
+          <div class="flex gap-2">
+            <button
+              type="button"
+              x-on:click="sincronizar"
+              class="min-h-12 flex-1 rounded-xl bg-blue-700 px-4 font-bold text-white active:scale-95"
+            >
+              Actualizar
+            </button>
+            <button
+              type="button"
+              x-on:click="borrarCache"
+              class="min-h-12 flex-1 rounded-xl border border-slate-300 px-4 font-bold text-slate-700 active:scale-95"
+            >
+              Limpiar datos
+            </button>
+          </div>
+
+          <div class="rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
+            <p class="font-bold text-slate-800">Leyenda</p>
+            <p><span class="inline-block h-3 w-3 rounded-full bg-blue-600"></span> Centro de salud</p>
+            <p><span class="inline-block h-3 w-3 rounded-full bg-red-600"></span> Necesidad crítica</p>
+            <p><span class="inline-block h-3 w-3 rounded-full bg-orange-500"></span> Necesidad urgente</p>
+            <p><span class="inline-block h-3 w-3 rounded-full bg-green-600"></span> Donación disponible</p>
+          </div>
+        </aside>
+
+        <section class="rounded-2xl bg-white p-2 shadow-sm">
+          <div id="mapa-nexo" role="application" aria-label="Mapa operativo de Nexo"></div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="../scripts/mapa.js"></script>
+  </body>
+</html>
