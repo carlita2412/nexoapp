@@ -7,6 +7,7 @@ from typing import Any
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
+from coordinacion.geo import normalizar_point
 from coordinacion.models import Catalogo, CentroSalud, Donacion, Necesidad, Organizacion
 
 NAMESPACE_KOBO = uuid.UUID("6c56b443-0ad2-4af7-9668-a375ff3ebf20")
@@ -62,6 +63,13 @@ def _booleano(valor: Any) -> bool:
     if isinstance(valor, bool):
         return valor
     return str(valor).strip().lower() in {"1", "true", "si", "sí", "yes", "y"}
+
+
+def _punto(valor: Any, campo: str):
+    try:
+        return normalizar_point(valor)
+    except (TypeError, ValueError) as exc:
+        raise MapeoKoboError(f"{campo} contiene coordenadas inválidas.") from exc
 
 
 def _catalogo(submission: dict[str, Any]) -> Catalogo:
@@ -159,6 +167,7 @@ def mapear_donacion(submission: dict[str, Any]) -> dict[str, Any]:
         campo_nombre="donante_nombre",
     )
     vencimiento = _valor(submission, "vencimiento", "fecha_vencimiento")
+    ubicacion = _valor(submission, "ubicacion_actual", "geopoint", "geolocalizacion", default="")
 
     payload = {
         "id": _uuid_estable("donacion", submission_uuid),
@@ -168,7 +177,7 @@ def mapear_donacion(submission: dict[str, Any]) -> dict[str, Any]:
         "condicion": _valor(submission, "condicion", default=Donacion.Condicion.NUEVO),
         "vencimiento": parse_date(str(vencimiento)) if vencimiento else None,
         "certificacion": _valor(submission, "certificacion", default=""),
-        "ubicacion_actual": _valor(submission, "ubicacion_actual", "geopoint", "geolocalizacion", default=""),
+        "ubicacion_actual": _punto(ubicacion, "ubicacion_actual"),
         "ubicacion_texto": _valor(submission, "ubicacion_texto", "direccion", default=""),
         "estado": Donacion.Estado.DISPONIBLE,
         "version": 1,

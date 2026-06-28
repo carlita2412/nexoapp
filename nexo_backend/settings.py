@@ -1,11 +1,7 @@
 
 import os
-import environ
-
-
 from pathlib import Path
 from dotenv import load_dotenv
-
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -49,11 +45,8 @@ env = environ.Env(
 env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("SECRET_KEY")
-
 DEBUG = env("DEBUG")
-
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
-
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 
@@ -93,13 +86,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.gis",
-
     "rest_framework",
     "rest_framework.authtoken",
     "django_filters",
     "corsheaders",
     "django_q",
-
     "coordinacion",
 ]
 
@@ -153,7 +144,6 @@ if NEXO_DB_ENGINE == "spatialite":
     }
     SPATIALITE_LIBRARY_PATH = env("SPATIALITE_LIBRARY_PATH", default="")
 
-
 elif NEXO_DB_ENGINE == "sqlite":
     DATABASES = {
         "default": {
@@ -161,7 +151,6 @@ elif NEXO_DB_ENGINE == "sqlite":
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-
 else:
     DATABASES = {
         "default": {
@@ -182,38 +171,25 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = env.path("STATIC_ROOT", default=BASE_DIR / "staticfiles")
 STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# Redirección posterior al login/logout de la API navegable de DRF.
 LOGIN_REDIRECT_URL = "/api/v1/"
 LOGOUT_REDIRECT_URL = "/api-auth/login/"
 
-# --- Almacenamiento de fotos de entrega ---
 MEDIA_URL = "media/"
 MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
 
-# Presupuesto y límites de fotos (§2). El cliente comprime antes de subir; el
-# servidor re-comprime para garantizar el objetivo.
-FOTO_OBJETIVO_BYTES = 100_000          # foto de entrega < 100 KB
-FOTO_MAX_SUBIDA_BYTES = 5 * 1024 * 1024  # rechazo defensivo de subidas enormes
+FOTO_OBJETIVO_BYTES = 100_000
+FOTO_MAX_SUBIDA_BYTES = 5 * 1024 * 1024
 
 REST_FRAMEWORK = {
-    # En campo el cliente offline usa Token (cabecera Authorization: Token <key>);
-    # Session habilita la API navegable y el admin durante desarrollo.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
-    # Por defecto, ninguna ruta es anónima: cada vista decide su política de rol.
-    # PermisoPorRol = lectura para cualquier autenticado, escritura solo admin.
     "DEFAULT_PERMISSION_CLASSES": [
         "coordinacion.permisos.PermisoPorRol",
     ],
@@ -229,7 +205,6 @@ Q_CLUSTER = {
     "orm": "default",
 }
 
-# --- KoBoToolbox ---
 KOBO_API_URL = env("KOBO_API_URL", default="https://kf.kobotoolbox.org/api/v2").rstrip("/")
 KOBO_TOKEN = env("KOBO_TOKEN", default="")
 KOBO_ASSET_NECESIDADES = env("KOBO_ASSET_NECESIDADES", default="")
