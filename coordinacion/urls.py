@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .auth_views import LoginToken
 from .fotos.vistas import FotoViewSet
+from .kobo.views import webhook_kobo
 from .views import (
     AsignacionViewSet,
     CatalogoViewSet,
@@ -30,4 +31,5 @@ urlpatterns = [
     path("auth/token/", LoginToken.as_view(), name="auth-token"),
     path("", include(router.urls)),
     path("sync/", sync, name="sync"),
+    path("kobo/webhook/<str:tipo>/", webhook_kobo, name="kobo-webhook"),
 ]
