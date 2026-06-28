@@ -20,13 +20,9 @@ Este repositorio contiene el backend operativo de la API `v1` de Nexo. Actualmen
 - Webhook alternativo para KoBoToolbox.
 - Endpoint multipart para fotos de confirmación de entrega.
 - Compresión asíncrona de fotos con `django-q2`.
-
 - Seed inicial idempotente de organizaciones, catálogos, centros de salud y usuarios base.
-- Pruebas de idempotencia, matching, delta sync, claim, RBAC, fotos y seed inicial.
-=======
 - Configuración productiva por `.env` para PostgreSQL/PostGIS, CORS/CSRF, media persistente, staticfiles, Gunicorn y Caddy.
-- Pruebas de idempotencia, matching, delta sync, claim, RBAC y fotos.
->>>>>>> origin/cerrar-config-produccion
+- Pruebas de idempotencia, matching, delta sync, claim, RBAC, fotos y seed inicial.
 
 ## Stack actual
 
