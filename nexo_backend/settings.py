@@ -1,13 +1,37 @@
 import os
 from pathlib import Path
 
+import environ
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "nexo-dev-secret-key-cambiar-en-produccion"
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, []),
+    CSRF_TRUSTED_ORIGINS=(list, []),
+    CORS_ALLOWED_ORIGINS=(list, []),
+    DB_NAME=(str, "nexo"),
+    DB_USER=(str, "nexo"),
+    DB_PASSWORD=(str, ""),
+    DB_HOST=(str, "localhost"),
+    DB_PORT=(str, "5432"),
+    NEXO_DB_ENGINE=(str, "postgis"),
+)
+env.read_env(BASE_DIR / ".env")
 
-DEBUG = True
+SECRET_KEY = env("SECRET_KEY")
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+DEBUG = env("DEBUG")
+
+ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -60,18 +84,44 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "nexo_backend.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+NEXO_DB_ENGINE = env("NEXO_DB_ENGINE").lower()
+
+if NEXO_DB_ENGINE == "spatialite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.contrib.gis.db.backends.spatialite",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+    SPATIALITE_LIBRARY_PATH = env("SPATIALITE_LIBRARY_PATH", default="")
+elif NEXO_DB_ENGINE == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.contrib.gis.db.backends.postgis",
+            "NAME": env("DB_NAME"),
+            "USER": env("DB_USER"),
+            "PASSWORD": env("DB_PASSWORD"),
+            "HOST": env("DB_HOST"),
+            "PORT": env("DB_PORT"),
+        }
+    }
 
 LANGUAGE_CODE = "es-ve"
 TIME_ZONE = "America/Caracas"
 USE_I18N = True
 USE_TZ = True
+
 STATIC_URL = "static/"
+STATIC_ROOT = env.path("STATIC_ROOT", default=BASE_DIR / "staticfiles")
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Redirección posterior al login/logout de la API navegable de DRF.
@@ -80,7 +130,7 @@ LOGOUT_REDIRECT_URL = "/api-auth/login/"
 
 # --- Almacenamiento de fotos de entrega ---
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
 
 # Presupuesto y límites de fotos (§2). El cliente comprime antes de subir; el
 # servidor re-comprime para garantizar el objetivo.
@@ -112,9 +162,9 @@ Q_CLUSTER = {
 }
 
 # --- KoBoToolbox ---
-KOBO_API_URL = os.environ.get("KOBO_API_URL", "https://kf.kobotoolbox.org/api/v2").rstrip("/")
-KOBO_TOKEN = os.environ.get("KOBO_TOKEN", "")
-KOBO_ASSET_NECESIDADES = os.environ.get("KOBO_ASSET_NECESIDADES", "")
-KOBO_ASSET_DONACIONES = os.environ.get("KOBO_ASSET_DONACIONES", "")
-KOBO_WEBHOOK_TOKEN = os.environ.get("KOBO_WEBHOOK_TOKEN", "")
-KOBO_PULL_LIMIT = int(os.environ.get("KOBO_PULL_LIMIT", "500"))
+KOBO_API_URL = env("KOBO_API_URL", default="https://kf.kobotoolbox.org/api/v2").rstrip("/")
+KOBO_TOKEN = env("KOBO_TOKEN", default="")
+KOBO_ASSET_NECESIDADES = env("KOBO_ASSET_NECESIDADES", default="")
+KOBO_ASSET_DONACIONES = env("KOBO_ASSET_DONACIONES", default="")
+KOBO_WEBHOOK_TOKEN = env("KOBO_WEBHOOK_TOKEN", default="")
+KOBO_PULL_LIMIT = env.int("KOBO_PULL_LIMIT", default=500)
