@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,7 +55,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
             ],
         },
-    },
+    }
 ]
 
 WSGI_APPLICATION = "nexo_backend.wsgi.application"
@@ -105,3 +106,11 @@ Q_CLUSTER = {
     "bulk": 10,
     "orm": "default",
 }
+
+# --- KoBoToolbox ---
+KOBO_API_URL = os.environ.get("KOBO_API_URL", "https://kf.kobotoolbox.org/api/v2").rstrip("/")
+KOBO_TOKEN = os.environ.get("KOBO_TOKEN", "")
+KOBO_ASSET_NECESIDADES = os.environ.get("KOBO_ASSET_NECESIDADES", "")
+KOBO_ASSET_DONACIONES = os.environ.get("KOBO_ASSET_DONACIONES", "")
+KOBO_WEBHOOK_TOKEN = os.environ.get("KOBO_WEBHOOK_TOKEN", "")
+KOBO_PULL_LIMIT = int(os.environ.get("KOBO_PULL_LIMIT", "500"))
