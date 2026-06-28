@@ -1,6 +1,16 @@
 # Pruebas KoBo desde navegador
 
-Esta guía permite probar el módulo KoBo usando la API navegable de Django REST Framework, sin Postman.
+Esta guía permite probar el módulo KoBo desde el navegador sin Postman.
+
+Importante: escribir una URL en la barra del navegador siempre hace un `GET`. Los webhooks de KoBo solo aceptan `POST`, por eso es normal ver:
+
+```json
+{
+  "detail": "Método \"GET\" no permitido."
+}
+```
+
+Ese mensaje confirma que la ruta existe. Para probar el webhook desde navegador se debe enviar un `POST` usando la consola del navegador.
 
 ## 1. Preparar servidor local
 
@@ -63,37 +73,47 @@ Ejemplo de catálogo:
 
 Guardar los UUID generados de `organizacion`, `centro` y `catalogo`.
 
-## 4. Probar webhook de necesidad
+## 4. Probar webhook de necesidad con POST desde navegador
 
-Abrir:
+Abrir cualquier página del servidor, por ejemplo:
 
 ```text
-http://127.0.0.1:8000/api/v1/kobo/webhook/necesidad/
+http://127.0.0.1:8000/api/v1/salud/
 ```
 
-En el formulario de DRF, enviar `POST` con JSON:
+Abrir DevTools con `F12`, ir a la pestaña **Console** y pegar este código. Cambiar `PEGAR_UUID_CENTRO` y `PEGAR_UUID_ORGANIZACION` por UUID reales.
 
-```json
-{
-  "_uuid": "kobo-nec-001",
-  "_submission_time": "2026-06-27T12:00:00-04:00",
-  "centro_id": "PEGAR_UUID_CENTRO",
-  "item_codigo": "MONITOR-SV",
-  "reportada_por_id": "PEGAR_UUID_ORGANIZACION",
-  "cantidad_solicitada": "2",
-  "nivel_triage": "1_critico",
-  "requiere_electricidad": "si",
-  "requiere_oxigeno": "no",
-  "requiere_personal_entrenado": "si"
-}
+```javascript
+fetch("http://127.0.0.1:8000/api/v1/kobo/webhook/necesidad/", {
+  method: "POST",
+  credentials: "omit",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    _uuid: "kobo-nec-001",
+    _submission_time: "2026-06-27T12:00:00-04:00",
+    centro_id: "PEGAR_UUID_CENTRO",
+    item_codigo: "MONITOR-SV",
+    reportada_por_id: "PEGAR_UUID_ORGANIZACION",
+    cantidad_solicitada: "2",
+    nivel_triage: "1_critico",
+    requiere_electricidad: "si",
+    requiere_oxigeno: "no",
+    requiere_personal_entrenado: "si"
+  })
+})
+  .then(async (r) => ({ status: r.status, data: await r.json() }))
+  .then(console.log);
 ```
 
 Resultado esperado:
 
 ```json
 {
-  "estado": "ok",
-  "entity": "necesidad"
+  "status": 201,
+  "data": {
+    "estado": "ok",
+    "entity": "necesidad"
+  }
 }
 ```
 
@@ -105,46 +125,53 @@ http://127.0.0.1:8000/api/v1/necesidades/
 
 ## 5. Probar idempotencia
 
-Enviar el mismo JSON otra vez, con el mismo `_uuid`.
+Ejecutar exactamente el mismo `fetch` otra vez, con el mismo `_uuid`.
 
 Resultado esperado:
 
 ```json
 {
-  "estado": "duplicado"
+  "status": 200,
+  "data": {
+    "estado": "duplicado"
+  }
 }
 ```
 
 No debe crearse una segunda necesidad.
 
-## 6. Probar webhook de donación
+## 6. Probar webhook de donación con POST desde navegador
 
-Abrir:
+Abrir DevTools con `F12`, ir a **Console** y pegar este código. Cambiar `PEGAR_UUID_ORGANIZACION` por un UUID real.
 
-```text
-http://127.0.0.1:8000/api/v1/kobo/webhook/donacion/
-```
-
-Enviar JSON:
-
-```json
-{
-  "_uuid": "kobo-don-001",
-  "_submission_time": "2026-06-27T13:00:00-04:00",
-  "item_codigo": "MONITOR-SV",
-  "donante_id": "PEGAR_UUID_ORGANIZACION",
-  "cantidad": "3",
-  "condicion": "nuevo",
-  "ubicacion_texto": "Caracas"
-}
+```javascript
+fetch("http://127.0.0.1:8000/api/v1/kobo/webhook/donacion/", {
+  method: "POST",
+  credentials: "omit",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    _uuid: "kobo-don-001",
+    _submission_time: "2026-06-27T13:00:00-04:00",
+    item_codigo: "MONITOR-SV",
+    donante_id: "PEGAR_UUID_ORGANIZACION",
+    cantidad: "3",
+    condicion: "nuevo",
+    ubicacion_texto: "Caracas"
+  })
+})
+  .then(async (r) => ({ status: r.status, data: await r.json() }))
+  .then(console.log);
 ```
 
 Resultado esperado:
 
 ```json
 {
-  "estado": "ok",
-  "entity": "donacion"
+  "status": 201,
+  "data": {
+    "estado": "ok",
+    "entity": "donacion"
+  }
 }
 ```
 
@@ -180,6 +207,10 @@ http://127.0.0.1:8000/api/v1/donaciones/
 
 ## 8. Errores frecuentes
 
+### `Método "GET" no permitido`
+
+Es normal si se abrió el webhook desde la barra del navegador. El webhook existe, pero debe probarse con `POST` usando `fetch` en la consola o usando KoBo REST Service.
+
 ### `Catálogo no existe`
 
 El `item_codigo` del JSON no coincide con ningún `Catalogo.codigo`.
@@ -200,8 +231,11 @@ Si `KOBO_WEBHOOK_TOKEN` está configurado, enviar el token como query param:
 /api/v1/kobo/webhook/necesidad/?token=TU_TOKEN_WEBHOOK
 ```
 
-O como header:
+O como header dentro del `fetch`:
 
-```text
-X-Kobo-Token: TU_TOKEN_WEBHOOK
+```javascript
+headers: {
+  "Content-Type": "application/json",
+  "X-Kobo-Token": "TU_TOKEN_WEBHOOK"
+}
 ```
