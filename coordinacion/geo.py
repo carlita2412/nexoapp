@@ -7,7 +7,7 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.geos.error import GEOSException
 
 COORD_RE = re.compile(
-    r"^\s*(?:POINT\s*\()?\s*"
+    r"^\s*(?P<wkt>POINT\s*\()?\s*"
     r"(?P<a>-?\d+(?:\.\d+)?)"
     r"[\s,;]+"
     r"(?P<b>-?\d+(?:\.\d+)?)"
@@ -84,11 +84,17 @@ def normalizar_point(valor: Any) -> Point | None:
     a = float(match.group("a"))
     b = float(match.group("b"))
 
+    # WKT usa lon lat por estándar.
+    if match.group("wkt"):
+        if _es_longitud(a) and _es_latitud(b):
+            return crear_point(b, a)
+        return None
+
     # KoBo geopoint y captura de campo suelen venir como lat lon.
     if _es_latitud(a) and _es_longitud(b):
         return crear_point(a, b)
 
-    # WKT/GeoJSON conceptual usa lon lat. Este fallback cubre esos casos.
+    # Fallback para valores claramente lon lat.
     if _es_longitud(a) and _es_latitud(b):
         return crear_point(b, a)
 
