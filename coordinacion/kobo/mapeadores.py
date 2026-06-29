@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone as datetime_timezone
 from typing import Any
 
 from django.utils import timezone
@@ -97,7 +97,7 @@ def _submission_time(submission: dict[str, Any]) -> datetime:
     if not fecha:
         return timezone.now()
     if timezone.is_naive(fecha):
-        return timezone.make_aware(fecha, timezone=timezone.utc)
+        return timezone.make_aware(fecha, timezone=datetime_timezone.utc)
     return fecha
 
 
