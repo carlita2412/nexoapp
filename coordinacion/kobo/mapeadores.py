@@ -20,15 +20,32 @@ class MapeoKoboError(ValueError):
     pass
 
 
+def _buscar_clave_kobo(submission: dict[str, Any], clave: str) -> Any:
+    """
+    KoBo devuelve campos dentro de grupos XLSForm como `grupo/campo`.
+    El contrato Nexo usa el nombre final (`campo`) para que el backend no dependa
+    de la estructura visual del formulario.
+    """
+    if clave in submission:
+        return submission[clave]
+
+    sufijo = f"/{clave}"
+    for nombre, valor in submission.items():
+        if nombre.endswith(sufijo):
+            return valor
+    return None
+
+
 def _valor(submission: dict[str, Any], *claves: str, default: Any = None) -> Any:
     for clave in claves:
-        if clave in submission and submission[clave] not in (None, ""):
-            return submission[clave]
+        valor = _buscar_clave_kobo(submission, clave)
+        if valor not in (None, ""):
+            return valor
     return default
 
 
 def _tiene_algun_campo(submission: dict[str, Any], claves: tuple[str, ...]) -> bool:
-    return any(clave in submission and submission[clave] not in (None, "") for clave in claves)
+    return any(_valor(submission, clave) not in (None, "") for clave in claves)
 
 
 def _validar_campos_requeridos(tipo: str, submission: dict[str, Any]) -> None:
