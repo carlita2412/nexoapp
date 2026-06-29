@@ -58,6 +58,22 @@ def submission_real_necesidad(organizacion, item, centro):
     }
 
 
+def submission_real_necesidad_agrupada(organizacion, item, centro):
+    return {
+        "_uuid": "kobo-necesidad-real-agrupada-001",
+        "_submission_time": "2026-06-28T14:30:00Z",
+        "identificacion/centro_id": str(centro.id),
+        "identificacion/item_codigo": item.codigo,
+        "identificacion/cantidad_solicitada": "3",
+        "identificacion/nivel_triage": Necesidad.NivelTriage.CRITICO,
+        "identificacion/reportada_por_id": str(organizacion.id),
+        "requisitos/requiere_electricidad": "si",
+        "requisitos/requiere_oxigeno": "true",
+        "requisitos/requiere_personal_entrenado": "1",
+        "requisitos/requiere_insumos": "no",
+    }
+
+
 def submission_real_donacion(organizacion, item):
     return {
         "_uuid": "kobo-donacion-real-001",
@@ -69,6 +85,20 @@ def submission_real_donacion(organizacion, item):
         "geopoint": "10.5000 -66.9167 0 5",
         "ubicacion_texto": "Caracas",
         "certificacion": "Funcional verificado por campo",
+    }
+
+
+def submission_real_donacion_agrupada(organizacion, item):
+    return {
+        "_uuid": "kobo-donacion-real-agrupada-001",
+        "_submission_time": "2026-06-28T14:40:00Z",
+        "donacion/item_codigo": item.codigo,
+        "donacion/cantidad": "2",
+        "donacion/condicion": Donacion.Condicion.USADO_FUNCIONAL,
+        "donacion/donante_id": str(organizacion.id),
+        "ubicacion/ubicacion_actual": "10.5000 -66.9167 0 5",
+        "ubicacion/ubicacion_texto": "Caracas",
+        "detalle_tecnico/certificacion": "Funcional verificado por campo",
     }
 
 
@@ -91,6 +121,20 @@ def test_asset_real_necesidades_mapea_campos_exactos_y_catalogos_csv():
     }
 
 
+def test_asset_real_necesidades_mapea_campos_agrupados_de_xlsform():
+    organizacion, item, centro = crear_base_kobo()
+
+    evento = mapear_necesidad(submission_real_necesidad_agrupada(organizacion, item, centro))
+
+    assert evento["entity"] == "necesidad"
+    assert evento["payload"]["centro"] == str(centro.id)
+    assert evento["payload"]["item"] == str(item.id)
+    assert evento["payload"]["cantidad_solicitada"] == 3
+    assert evento["payload"]["nivel_triage"] == Necesidad.NivelTriage.CRITICO
+    assert evento["payload"]["reportada_por"] == str(organizacion.id)
+    assert evento["payload"]["requisitos_operacion"]["requiere_oxigeno"] is True
+
+
 def test_asset_real_donaciones_mapea_geopoint_y_catalogos_csv():
     organizacion, item, _centro = crear_base_kobo()
 
@@ -102,6 +146,20 @@ def test_asset_real_donaciones_mapea_geopoint_y_catalogos_csv():
     assert evento["payload"]["item"] == str(item.id)
     assert evento["payload"]["cantidad"] == 2
     assert evento["payload"]["condicion"] == Donacion.Condicion.USADO_FUNCIONAL
+    assert round(punto.y, 4) == 10.5
+    assert round(punto.x, 4) == -66.9167
+
+
+def test_asset_real_donaciones_mapea_campos_agrupados_de_xlsform():
+    organizacion, item, _centro = crear_base_kobo()
+
+    evento = mapear_donacion(submission_real_donacion_agrupada(organizacion, item))
+
+    punto = evento["payload"]["ubicacion_actual"]
+    assert evento["entity"] == "donacion"
+    assert evento["payload"]["donante"] == str(organizacion.id)
+    assert evento["payload"]["item"] == str(item.id)
+    assert evento["payload"]["cantidad"] == 2
     assert round(punto.y, 4) == 10.5
     assert round(punto.x, 4) == -66.9167
 
