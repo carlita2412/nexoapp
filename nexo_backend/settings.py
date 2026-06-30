@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+_DLL_DIRECTORY_HANDLES = []
 
 
 def _agregar_dll_dir_windows(ruta: str | None) -> None:
@@ -17,7 +18,8 @@ def _agregar_dll_dir_windows(ruta: str | None) -> None:
         ruta_path = ruta_path.parent
 
     if ruta_path.exists():
-        os.add_dll_directory(str(ruta_path))
+        handle = os.add_dll_directory(str(ruta_path))
+        _DLL_DIRECTORY_HANDLES.append(handle)
 
 
 def _configurar_dll_gis_windows(
