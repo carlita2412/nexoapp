@@ -9,7 +9,7 @@ load_dotenv(BASE_DIR / ".env")
 _DLL_DIRECTORY_HANDLES = []
 
 
-def _agregar_dll_dir_windows(ruta: str | None) -> None:
+def _agregar_dll_dir_windows(ruta: str | os.PathLike | None) -> None:
     if os.name != "nt" or not ruta:
         return
 
@@ -17,16 +17,64 @@ def _agregar_dll_dir_windows(ruta: str | None) -> None:
     if ruta_path.is_file():
         ruta_path = ruta_path.parent
 
-    if ruta_path.exists():
-        handle = os.add_dll_directory(str(ruta_path))
-        _DLL_DIRECTORY_HANDLES.append(handle)
+    if not ruta_path.exists():
+        return
+
+    ruta_str = str(ruta_path)
+    path_actual = os.environ.get("PATH", "")
+    rutas_path = [p.casefold() for p in path_actual.split(os.pathsep) if p]
+    if ruta_str.casefold() not in rutas_path:
+        os.environ["PATH"] = ruta_str + os.pathsep + path_actual
+
+    handle = os.add_dll_directory(ruta_str)
+    _DLL_DIRECTORY_HANDLES.append(handle)
+
+
+def _detectar_qgis_bin_windows() -> Path | None:
+    if os.name != "nt":
+        return None
+
+    candidatos = [
+        os.environ.get("QGIS_BIN_PATH"),
+        r"C:\OSGeo4W\bin",
+        r"C:\OSGeo4W64\bin",
+    ]
+
+    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramW6432")):
+        if not base:
+            continue
+        candidatos.extend(str(path / "bin") for path in Path(base).glob("QGIS*"))
+
+    for candidato in candidatos:
+        if not candidato:
+            continue
+        ruta = Path(candidato)
+        if ruta.exists() and any(ruta.glob("gdal*.dll")):
+            return ruta
+
+    return None
+
+
+def _detectar_dll_windows(qgis_bin_path: str | os.PathLike | None, patron: str) -> str | None:
+    if os.name != "nt" or not qgis_bin_path:
+        return None
+
+    ruta = Path(qgis_bin_path)
+    if ruta.is_file():
+        ruta = ruta.parent
+
+    encontrados = sorted(ruta.glob(patron), reverse=True)
+    if encontrados:
+        return str(encontrados[0])
+
+    return None
 
 
 def _configurar_dll_gis_windows(
     *,
-    qgis_bin_path: str | None = None,
-    gdal_library_path: str | None = None,
-    geos_library_path: str | None = None,
+    qgis_bin_path: str | os.PathLike | None = None,
+    gdal_library_path: str | os.PathLike | None = None,
+    geos_library_path: str | os.PathLike | None = None,
 ) -> None:
     if os.name != "nt":
         return
@@ -36,10 +84,19 @@ def _configurar_dll_gis_windows(
     _agregar_dll_dir_windows(geos_library_path)
 
 
+_QGIS_BIN_PATH_DETECTADO = os.environ.get("QGIS_BIN_PATH") or _detectar_qgis_bin_windows()
+_GDAL_LIBRARY_PATH_DETECTADO = os.environ.get("GDAL_LIBRARY_PATH") or _detectar_dll_windows(
+    _QGIS_BIN_PATH_DETECTADO,
+    "gdal*.dll",
+)
+_GEOS_LIBRARY_PATH_DETECTADO = os.environ.get("GEOS_LIBRARY_PATH") or _detectar_dll_windows(
+    _QGIS_BIN_PATH_DETECTADO,
+    "geos_c*.dll",
+)
 _configurar_dll_gis_windows(
-    qgis_bin_path=os.environ.get("QGIS_BIN_PATH"),
-    gdal_library_path=os.environ.get("GDAL_LIBRARY_PATH"),
-    geos_library_path=os.environ.get("GEOS_LIBRARY_PATH"),
+    qgis_bin_path=_QGIS_BIN_PATH_DETECTADO,
+    gdal_library_path=_GDAL_LIBRARY_PATH_DETECTADO,
+    geos_library_path=_GEOS_LIBRARY_PATH_DETECTADO,
 )
 
 env = environ.Env(
@@ -56,9 +113,9 @@ env = environ.Env(
 )
 env.read_env(BASE_DIR / ".env")
 
-QGIS_BIN_PATH = env("QGIS_BIN_PATH", default=None)
-GDAL_LIBRARY_PATH = env("GDAL_LIBRARY_PATH", default=None)
-GEOS_LIBRARY_PATH = env("GEOS_LIBRARY_PATH", default=None)
+QGIS_BIN_PATH = env("QGIS_BIN_PATH", default=_QGIS_BIN_PATH_DETECTADO)
+GDAL_LIBRARY_PATH = env("GDAL_LIBRARY_PATH", default=_GDAL_LIBRARY_PATH_DETECTADO)
+GEOS_LIBRARY_PATH = env("GEOS_LIBRARY_PATH", default=_GEOS_LIBRARY_PATH_DETECTADO)
 _configurar_dll_gis_windows(
     qgis_bin_path=QGIS_BIN_PATH,
     gdal_library_path=GDAL_LIBRARY_PATH,
@@ -218,6 +275,3 @@ Q_CLUSTER = {
 KOBO_API_URL = env("KOBO_API_URL", default="https://kf.kobotoolbox.org/api/v2").rstrip("/")
 KOBO_TOKEN = env("KOBO_TOKEN", default="")
 KOBO_ASSET_NECESIDADES = env("KOBO_ASSET_NECESIDADES", default="")
-KOBO_ASSET_DONACIONES = env("KOBO_ASSET_DONACIONES", default="")
-KOBO_WEBHOOK_TOKEN = env("KOBO_WEBHOOK_TOKEN", default="")
-KOBO_PULL_LIMIT = env.int("KOBO_PULL_LIMIT", default=500)
