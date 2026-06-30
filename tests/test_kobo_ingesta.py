@@ -46,6 +46,38 @@ def test_mapear_necesidad_kobo_es_idempotente():
 
 
 @pytest.mark.django_db
+def test_mapear_necesidad_kobo_con_submission_time_sin_timezone():
+    centro = CentroSalud.objects.create(
+        nombre="Hospital Central",
+        tipo=CentroSalud.Tipo.HOSPITAL,
+        estado="Miranda",
+        municipio="Sucre",
+    )
+    item = Catalogo.objects.create(
+        codigo="MONITOR-SV",
+        nombre="Monitor de signos vitales",
+        categoria=Catalogo.Categoria.EQUIPO_MEDICO,
+    )
+    org = Organizacion.objects.create(
+        nombre="Digisalud",
+        tipo=Organizacion.Tipo.ONG,
+    )
+    submission = {
+        "_uuid": "abc-456",
+        "_submission_time": "2026-06-27T12:00:00",
+        "centro_id": str(centro.id),
+        "item_codigo": item.codigo,
+        "reportada_por_id": str(org.id),
+        "cantidad_solicitada": "1",
+        "nivel_triage": "1_critico",
+    }
+
+    evento = mapear_submission("necesidad", submission)
+
+    assert evento["client_timestamp"] == "2026-06-27T12:00:00+00:00"
+
+
+@pytest.mark.django_db
 def test_mapear_donacion_kobo_crea_evento_disponible():
     item = Catalogo.objects.create(
         codigo="GUANTES-M",
