@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+.campo-card {
+  @apply rounded-2xl border border-slate-700 bg-slate-900/90 p-4 shadow-lg shadow-black/20;
+}
+
+.campo-input {
+  @apply w-full rounded-xl border border-slate-600 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30;
+}
+
+.campo-btn {
+  @apply inline-flex min-h-12 items-center justify-center rounded-xl px-4 py-3 text-base font-bold transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.campo-btn-primary {
+  @apply campo-btn bg-cyan-400 text-slate-950 hover:bg-cyan-300;
+}
+
+.campo-btn-secondary {
+  @apply campo-btn border border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700;
+}
+
+.estado-tentativa {
+  @apply border-amber-400 bg-amber-400/10 text-amber-200;
+}
+
+.estado-confirmada {
+  @apply border-emerald-400 bg-emerald-400/10 text-emerald-200;
+}
+
+.estado-superada {
+  @apply border-rose-400 bg-rose-400/10 text-rose-200;
+}
