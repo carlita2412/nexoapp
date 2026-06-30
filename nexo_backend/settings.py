@@ -20,14 +20,25 @@ def _agregar_dll_dir_windows(ruta: str | None) -> None:
         os.add_dll_directory(str(ruta_path))
 
 
-if os.name == "nt":
-    QGIS_BIN_PATH = os.environ.get("QGIS_BIN_PATH")
-    GDAL_LIBRARY_PATH = os.environ.get("GDAL_LIBRARY_PATH")
-    GEOS_LIBRARY_PATH = os.environ.get("GEOS_LIBRARY_PATH")
+def _configurar_dll_gis_windows(
+    *,
+    qgis_bin_path: str | None = None,
+    gdal_library_path: str | None = None,
+    geos_library_path: str | None = None,
+) -> None:
+    if os.name != "nt":
+        return
 
-    _agregar_dll_dir_windows(QGIS_BIN_PATH)
-    _agregar_dll_dir_windows(GDAL_LIBRARY_PATH)
-    _agregar_dll_dir_windows(GEOS_LIBRARY_PATH)
+    _agregar_dll_dir_windows(qgis_bin_path)
+    _agregar_dll_dir_windows(gdal_library_path)
+    _agregar_dll_dir_windows(geos_library_path)
+
+
+_configurar_dll_gis_windows(
+    qgis_bin_path=os.environ.get("QGIS_BIN_PATH"),
+    gdal_library_path=os.environ.get("GDAL_LIBRARY_PATH"),
+    geos_library_path=os.environ.get("GEOS_LIBRARY_PATH"),
+)
 
 env = environ.Env(
     DEBUG=(bool, False),
@@ -43,8 +54,14 @@ env = environ.Env(
 )
 env.read_env(BASE_DIR / ".env")
 
+QGIS_BIN_PATH = env("QGIS_BIN_PATH", default=None)
 GDAL_LIBRARY_PATH = env("GDAL_LIBRARY_PATH", default=None)
 GEOS_LIBRARY_PATH = env("GEOS_LIBRARY_PATH", default=None)
+_configurar_dll_gis_windows(
+    qgis_bin_path=QGIS_BIN_PATH,
+    gdal_library_path=GDAL_LIBRARY_PATH,
+    geos_library_path=GEOS_LIBRARY_PATH,
+)
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
