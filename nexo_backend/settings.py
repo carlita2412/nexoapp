@@ -7,14 +7,27 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+
+def _agregar_dll_dir_windows(ruta: str | None) -> None:
+    if os.name != "nt" or not ruta:
+        return
+
+    ruta_path = Path(ruta)
+    if ruta_path.is_file():
+        ruta_path = ruta_path.parent
+
+    if ruta_path.exists():
+        os.add_dll_directory(str(ruta_path))
+
+
 if os.name == "nt":
     QGIS_BIN_PATH = os.environ.get("QGIS_BIN_PATH")
-
-    if QGIS_BIN_PATH and os.path.exists(QGIS_BIN_PATH):
-        os.add_dll_directory(QGIS_BIN_PATH)
-
     GDAL_LIBRARY_PATH = os.environ.get("GDAL_LIBRARY_PATH")
     GEOS_LIBRARY_PATH = os.environ.get("GEOS_LIBRARY_PATH")
+
+    _agregar_dll_dir_windows(QGIS_BIN_PATH)
+    _agregar_dll_dir_windows(GDAL_LIBRARY_PATH)
+    _agregar_dll_dir_windows(GEOS_LIBRARY_PATH)
 
 env = environ.Env(
     DEBUG=(bool, False),
