@@ -1,0 +1,222 @@
+---
+import '../styles/global.css';
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#22d3ee" />
+    <meta name="description" content="Portal público de transparencia de Nexo para donantes y prensa." />
+    <title>Nexo | Transparencia pública</title>
+  </head>
+  <body>
+    <main class="app transparencia-app">
+      <header class="card hero-publico">
+        <p class="muted">Portal público de transparencia</p>
+        <h1>Trazabilidad de ayuda médica</h1>
+        <p>
+          Seguimiento solo lectura del flujo de donaciones médicas: registrada, asignada,
+          en tránsito, entregada y en uso. Los datos publicados excluyen contactos,
+          responsables operativos, notas internas y PII clínica.
+        </p>
+        <div class="row hero-actions">
+          <a class="btn primary" href="#donaciones">Ver donaciones</a>
+          <a class="btn secondary" href="/">PWA campo</a>
+        </div>
+      </header>
+
+      <section class="card" aria-live="polite">
+        <div class="row estado-linea">
+          <span id="estadoTransparencia" class="pill warn">Cargando datos públicos</span>
+          <span id="actualizadoEn" class="muted">Última actualización pendiente</span>
+        </div>
+      </section>
+
+      <section class="grid metricas-publicas" aria-label="Métricas agregadas">
+        <article class="card metrica"><strong id="mNecesidadesAbiertas">0</strong><span>Necesidades abiertas</span></article>
+        <article class="card metrica"><strong id="mNecesidadesCubiertas">0</strong><span>Necesidades cubiertas</span></article>
+        <article class="card metrica"><strong id="mDonacionesEntregadas">0</strong><span>Donaciones entregadas</span></article>
+        <article class="card metrica"><strong id="mTiempoRespuesta">—</strong><span>Horas promedio de respuesta</span></article>
+      </section>
+
+      <section class="card">
+        <div class="row section-title">
+          <div>
+            <p class="muted">Cobertura territorial</p>
+            <h2>Cobertura por municipio</h2>
+          </div>
+        </div>
+        <div class="tabla-scroll">
+          <table class="tabla-publica">
+            <thead>
+              <tr>
+                <th>Estado</th>
+                <th>Municipio</th>
+                <th>Total</th>
+                <th>Abiertas</th>
+                <th>Cubiertas</th>
+              </tr>
+            </thead>
+            <tbody id="tablaMunicipios">
+              <tr><td colspan="5">Cargando cobertura...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="donaciones" class="card">
+        <div class="row section-title">
+          <div>
+            <p class="muted">Pipeline público</p>
+            <h2>Donaciones trazables</h2>
+          </div>
+          <button id="btnRefrescarTransparencia" class="btn secondary" type="button">Actualizar</button>
+        </div>
+        <div id="listaDonaciones" class="grid lista-donaciones-publicas">
+          <p class="muted">Cargando donaciones...</p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      const API_BASE = '/api/v1/publico/transparencia';
+      const estado = document.querySelector('#estadoTransparencia');
+      const actualizado = document.querySelector('#actualizadoEn');
+      const btnRefrescar = document.querySelector('#btnRefrescarTransparencia');
+      const tablaMunicipios = document.querySelector('#tablaMunicipios');
+      const listaDonaciones = document.querySelector('#listaDonaciones');
+      const metricas = {
+        necesidadesAbiertas: document.querySelector('#mNecesidadesAbiertas'),
+        necesidadesCubiertas: document.querySelector('#mNecesidadesCubiertas'),
+        donacionesEntregadas: document.querySelector('#mDonacionesEntregadas'),
+        tiempoRespuesta: document.querySelector('#mTiempoRespuesta')
+      };
+
+      const ETIQUETAS = {
+        registrada: 'Registrada',
+        asignada: 'Asignada',
+        en_transito: 'En tránsito',
+        entregada: 'Entregada',
+        en_uso: 'En uso'
+      };
+
+      async function pedirJson(ruta) {
+        const respuesta = await fetch(`${API_BASE}/${ruta}/`, { cache: 'no-store' });
+        if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+        return respuesta.json();
+      }
+
+      function textoFecha(valor) {
+        if (!valor) return 'Pendiente';
+        return new Date(valor).toLocaleString();
+      }
+
+      function textoGps(gps) {
+        if (!gps) return '';
+        if (gps.lat !== undefined && (gps.lon !== undefined || gps.lng !== undefined)) {
+          const lon = gps.lon ?? gps.lng;
+          return `${Number(gps.lat).toFixed(5)}, ${Number(lon).toFixed(5)}`;
+        }
+        if (gps.type === 'Point' && Array.isArray(gps.coordinates)) {
+          return `${Number(gps.coordinates[1]).toFixed(5)}, ${Number(gps.coordinates[0]).toFixed(5)}`;
+        }
+        return '';
+      }
+
+      function pintarResumen(data) {
+        const m = data.metricas || {};
+        metricas.necesidadesAbiertas.textContent = m.necesidades_abiertas ?? 0;
+        metricas.necesidadesCubiertas.textContent = m.necesidades_cubiertas ?? 0;
+        metricas.donacionesEntregadas.textContent = m.donaciones_entregadas ?? 0;
+        metricas.tiempoRespuesta.textContent = m.tiempo_respuesta_promedio_horas ?? '—';
+        actualizado.textContent = `Actualizado: ${textoFecha(data.actualizado_en)}`;
+
+        const filas = data.cobertura_por_municipio || [];
+        tablaMunicipios.innerHTML = filas.length
+          ? filas.map((fila) => `
+              <tr>
+                <td>${fila.estado || '—'}</td>
+                <td>${fila.municipio || '—'}</td>
+                <td>${fila.total_necesidades ?? 0}</td>
+                <td>${fila.abiertas ?? 0}</td>
+                <td>${fila.cubiertas ?? 0}</td>
+              </tr>
+            `).join('')
+          : '<tr><td colspan="5">Sin necesidades publicables todavía.</td></tr>';
+      }
+
+      function etapaHtml(etapa) {
+        const clase = etapa.activo ? 'paso activo' : 'paso pendiente';
+        const gps = textoGps(etapa.gps);
+        return `
+          <li class="${clase}">
+            <span class="dot"></span>
+            <div>
+              <strong>${ETIQUETAS[etapa.estado] || etapa.estado}</strong>
+              <small>${textoFecha(etapa.fecha)}</small>
+              ${gps ? `<small>GPS entrega: ${gps}</small>` : ''}
+              ${etapa.foto_url ? `<a class="foto-link" href="${etapa.foto_url}" target="_blank" rel="noopener">Ver foto de entrega</a>` : ''}
+            </div>
+          </li>
+        `;
+      }
+
+      function donacionHtml(donacion) {
+        const destino = donacion.destino || {};
+        const necesidad = donacion.necesidad || {};
+        return `
+          <article class="donacion-publica">
+            <div class="row donacion-head">
+              <div>
+                <p class="muted">${donacion.categoria || 'donación'} · ${donacion.condicion || ''}</p>
+                <h3>${donacion.item}</h3>
+              </div>
+              <span class="pill confirmada">${ETIQUETAS[donacion.estado_actual] || donacion.estado_actual}</span>
+            </div>
+            <dl class="detalle-publico">
+              <dt>Cantidad</dt><dd>${donacion.cantidad} ${donacion.unidad || ''}</dd>
+              <dt>Donante</dt><dd>${donacion.donante || 'No publicado'}</dd>
+              <dt>Destino</dt><dd>${destino.centro || 'Pendiente'}${destino.municipio ? ` · ${destino.municipio}` : ''}</dd>
+              <dt>Necesidad</dt><dd>${necesidad.item || 'Pendiente'}${necesidad.nivel_triage ? ` · ${necesidad.nivel_triage}` : ''}</dd>
+            </dl>
+            <ol class="pipeline-publico">
+              ${(donacion.pipeline || []).map(etapaHtml).join('')}
+            </ol>
+          </article>
+        `;
+      }
+
+      function pintarDonaciones(data) {
+        const donaciones = data.resultados || [];
+        listaDonaciones.innerHTML = donaciones.length
+          ? donaciones.map(donacionHtml).join('')
+          : '<p class="muted">Sin donaciones publicables todavía.</p>';
+      }
+
+      async function cargar() {
+        btnRefrescar.disabled = true;
+        estado.textContent = 'Actualizando datos públicos';
+        estado.className = 'pill warn';
+        try {
+          const [resumen, donaciones] = await Promise.all([
+            pedirJson('resumen'),
+            pedirJson('donaciones?limite=100')
+          ]);
+          pintarResumen(resumen);
+          pintarDonaciones(donaciones);
+          estado.textContent = 'Datos públicos actualizados';
+          estado.className = 'pill confirmada';
+        } catch (error) {
+          estado.textContent = `No se pudo cargar: ${error.message}`;
+          estado.className = 'pill superada';
+        } finally {
+          btnRefrescar.disabled = false;
+        }
+      }
+
+      btnRefrescar.addEventListener('click', cargar);
+      cargar();
+    </script>
+  </body>
+</html>
