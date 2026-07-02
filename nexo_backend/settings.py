@@ -275,3 +275,6 @@ Q_CLUSTER = {
 KOBO_API_URL = env("KOBO_API_URL", default="https://kf.kobotoolbox.org/api/v2").rstrip("/")
 KOBO_TOKEN = env("KOBO_TOKEN", default="")
 KOBO_ASSET_NECESIDADES = env("KOBO_ASSET_NECESIDADES", default="")
+KOBO_ASSET_DONACIONES = env("KOBO_ASSET_DONACIONES", default="")
+KOBO_WEBHOOK_TOKEN = env("KOBO_WEBHOOK_TOKEN", default="")
+KOBO_PULL_LIMIT = env.int("KOBO_PULL_LIMIT", default=500)
