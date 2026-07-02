@@ -1,79 +1,87 @@
-# PWA Nexo Campo: mapa Leaflet + OpenStreetMap
+# PWA — Mapa Leaflet con tiles cacheados
 
-La carpeta `pwa/` contiene la primera PWA operativa del proyecto Nexo para uso de campo. Cumple el pendiente del mapa solicitado en el prompt maestro: Leaflet + OpenStreetMap, visualización de centros, necesidades por triage, donaciones disponibles y cache limitado para reducir consumo móvil.
+Este incremento agrega y documenta la vista `/mapa/` de la PWA de campo para operar con bajo consumo de datos y soporte offline.
 
-## Qué incluye
+## Qué muestra
 
-- **Astro 5** como shell estático ligero.
-- **Tailwind** con fuentes del sistema, sin web fonts.
-- **Alpine.js** para estado mínimo de interfaz.
-- **Dexie/IndexedDB** para cache local de datos de API.
-- **Leaflet** para el mapa operativo.
-- **Workbox vía `@vite-pwa/astro`** para service worker, app shell y cache runtime.
+- Centros de salud con `geolocalizacion`.
+- Necesidades abiertas o parciales, ubicadas sobre su centro y diferenciadas por `nivel_triage`:
+  - `1_critico`
+  - `2_urgente`
+  - `3_importante`
+  - `4_rutinario`
+- Donaciones en estado `disponible` con `ubicacion_actual`.
+- Envíos/entregas con `geolocalizacion_entrega`.
 
-## Datos que consume
+## Endpoints usados
 
-La PWA lee la API existente:
+La vista lee datos autenticados desde:
 
 - `GET /api/v1/centros-salud/`
 - `GET /api/v1/necesidades/`
 - `GET /api/v1/donaciones/`
+- `GET /api/v1/envios/`
+- `GET /api/v1/asignaciones/`
 - `GET /api/v1/catalogos/`
+- `GET /api/v1/organizaciones/`
 
-El token DRF se pega en la interfaz y se guarda solo en `localStorage` del dispositivo. Si la red falla, la pantalla usa la última copia guardada en IndexedDB.
+El token se toma de `localStorage` usando cualquiera de estas claves, para mantener compatibilidad con el login existente o próximo de la PWA:
 
-## Capas del mapa
+- `nexo_token`
+- `token`
+- `auth_token`
+- `nexo_auth.token`
 
-- **Centros de salud**: marcador azul, usa `CentroSalud.geolocalizacion`.
-- **Necesidades abiertas/parciales**: marcador por triage sobre la coordenada del centro.
-  - Crítico: rojo.
-  - Urgente: naranja.
-  - Importante: amarillo.
-  - Rutinario: gris.
-- **Donaciones disponibles**: marcador verde, usa `Donacion.ubicacion_actual` cuando existe coordenada.
+## Offline y ahorro de datos
 
-## Control de datos móviles
+- Los datos operativos del mapa se guardan en IndexedDB con Dexie, en la base `nexo_campo`, tabla `mapa`.
+- Si no hay señal, la vista muestra la última copia local disponible.
+- La actualización de datos es manual con el botón **Actualizar datos**, para evitar sincronizaciones pesadas involuntarias en datos móviles.
+- Leaflet usa `detectRetina: false`, `updateWhenIdle: true` y `keepBuffer: 1` para limitar descarga de tiles.
+- El mapa limita `maxZoom` y `maxNativeZoom` a `15`.
 
-El modo ahorro viene activo por defecto:
+## Cache de tiles
 
-- zoom máximo limitado,
-- `updateWhenIdle` en Leaflet para cargar tiles solo al detener el movimiento,
-- `keepBuffer` reducido,
-- cache Workbox `CacheFirst` para tiles de OpenStreetMap,
-- límite de `120` tiles y expiración de `7` días,
-- purga automática si hay presión de almacenamiento.
+`astro.config.mjs` agrega una regla Workbox `CacheFirst` para `https://tile.openstreetmap.org/{z}/{x}/{y}.png` solo cuando `z <= 15`.
 
-Esto evita precachear zonas grandes. El usuario debe navegar solo el área operativa necesaria antes de salir a campo.
+La caché se llama `nexo-osm-tiles-z15` y usa:
+
+- `maxEntries: 450`
+- `maxAgeSeconds: 30 días`
+- `purgeOnQuotaError: true`
+
+Esto permite precargar/usar zonas consultadas previamente sin permitir que el cache de mapa crezca sin control.
 
 ## Desarrollo local
 
 Desde la raíz del repositorio:
 
 ```bash
-cd pwa
 npm install
 npm run dev
-```
-
-Por defecto la PWA llama a `/api/v1`. Si se sirve separada del backend:
-
-```bash
-PUBLIC_NEXO_API_BASE="https://nexo.ejemplo.org/api/v1" npm run dev
 ```
 
 ## Build de producción
 
 ```bash
-cd pwa
 npm install
-PUBLIC_NEXO_API_BASE="https://nexo.ejemplo.org/api/v1" npm run build
+npm run build
 ```
 
-El resultado queda en `pwa/dist/`. Puede publicarse con Caddy como sitio estático y proxy a Django para `/api/v1/`.
+El resultado queda en `dist/`. Puede publicarse con Caddy como sitio estático y proxy a Django para `/api/v1/`.
+
+## Verificación manual
+
+1. Entrar a `/mapa/` con sesión válida.
+2. Tocar **Actualizar datos**.
+3. Navegar la zona operativa hasta zoom 15 para poblar tiles.
+4. Activar modo avión.
+5. Recargar `/mapa/` y confirmar que aparecen datos locales y tiles previamente visitados.
+6. Volver a tener señal y tocar **Actualizar datos** para refrescar.
 
 ## Notas operativas
 
 - La PWA no reemplaza KoBoCollect para captura primaria; complementa claim/matching/consulta operativa.
 - El mapa es usable offline con datos ya sincronizados y tiles previamente visitados.
-- Si una donación no tiene coordenada, aparece en los datos sincronizados pero no como marcador; conviene registrar `ubicacion_actual` para logística.
+- Si una donación o entrega no tiene coordenada, aparece en los datos sincronizados pero no como marcador; conviene registrar `ubicacion_actual` y `geolocalizacion_entrega` para logística.
 - No se capturan datos de pacientes ni PII clínica.
