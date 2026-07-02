@@ -84,3 +84,21 @@ export async function resumenCola() {
   const fotos = await db.fotos_pendientes.where('estado').equals('pendiente').count();
   return { pendientes, sincronizados, conflicto, superada, fotos };
 }
+
+export async function obtenerEstadoSync() {
+  const [ultimoSyncOk, ultimoIntentoSync, ultimoErrorSync, estadoSyncActual, resumen] = await Promise.all([
+    obtenerAjuste('ultimoSyncOk', null),
+    obtenerAjuste('ultimoIntentoSync', null),
+    obtenerAjuste('ultimoErrorSync', null),
+    obtenerAjuste('estadoSyncActual', 'pendiente'),
+    resumenCola(),
+  ]);
+
+  return {
+    ...resumen,
+    ultimoSyncOk,
+    ultimoIntentoSync,
+    ultimoErrorSync,
+    estadoActual: estadoSyncActual,
+  };
+}
