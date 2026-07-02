@@ -9,6 +9,7 @@ import {
   sincronizarDeltas,
   sincronizarTodo,
   uuid,
+  verificarOutboxManual,
 } from './lib/sync.js';
 
 const ahoraIso = () => new Date().toISOString();
@@ -173,20 +174,19 @@ Alpine.data('nexoApp', () => ({
     return this.catalogos.find((item) => item.id === id)?.nombre || id;
   },
 
-  async refrescar() {
-    await this.cargarLocal();
+  fechaEvento(evento) {
+    return evento.creado_en || evento.client_timestamp || '';
   },
 
-  payloadBase(entity, payload) {
-    return {
-      idempotency_key: uuid(),
-      client_timestamp: ahoraIso(),
-      entity,
-      payload,
-      estado: 'pendiente',
-      creado_en: ahoraIso(),
-      actualizado_en: ahoraIso(),
-    };
+  detalleEvento(evento) {
+    if (evento.error) return evento.error;
+    if (!evento.respuesta) return 'Pendiente de sincronizar.';
+    if (evento.respuesta.mensaje) return evento.respuesta.mensaje;
+    return JSON.stringify(evento.respuesta);
+  },
+
+  async refrescar() {
+    await this.cargarLocal();
   },
 
   async crearNecesidad() {
@@ -209,7 +209,7 @@ Alpine.data('nexoApp', () => ({
     };
 
     await db.necesidades.put(payload);
-    await encolarEvento(this.payloadBase('necesidad', payload));
+    await encolarEvento('necesidad', payload, { estado_local: 'abierta' });
     this.mensaje = 'Necesidad guardada localmente.';
     await this.refrescar();
   },
@@ -229,7 +229,7 @@ Alpine.data('nexoApp', () => ({
     };
 
     await db.donaciones.put(payload);
-    await encolarEvento(this.payloadBase('donacion', payload));
+    await encolarEvento('donacion', payload, { estado_local: payload.estado });
     this.mensaje = 'Donación guardada localmente.';
     await this.refrescar();
   },
@@ -257,9 +257,8 @@ Alpine.data('nexoApp', () => ({
       created_at: ahoraIso(),
       updated_at: ahoraIso(),
     };
-    const evento = this.payloadBase('asignacion_claim', payload);
+    const evento = await encolarEvento('asignacion_claim', payload, { estado_local: 'tentativa' });
     await db.asignaciones.put({ ...payload, idempotency_key: evento.idempotency_key });
-    await encolarEvento(evento);
     this.mensaje = 'Claim tentativo guardado. Se arbitrará al sincronizar.';
     await this.refrescar();
   },
@@ -284,7 +283,7 @@ Alpine.data('nexoApp', () => ({
     };
 
     await db.envios.put(payload);
-    await encolarEvento(this.payloadBase('envio_entrega', payload));
+    await encolarEvento('envio', payload, { estado_local: 'entregado' });
 
     if (this.formEntrega.foto) {
       const blob = await comprimirFoto(this.formEntrega.foto);
@@ -317,6 +316,18 @@ Alpine.data('nexoApp', () => ({
     }
   },
 
+  async reintentarSincronizacionManual() {
+    this.error = '';
+    try {
+      await sincronizarTodo();
+      this.mensaje = 'Reintento manual completado.';
+      await this.refrescar();
+    } catch (error) {
+      this.error = error.message;
+      await this.refrescar();
+    }
+  },
+
   async sincronizarSilencioso() {
     try {
       await sincronizarTodo();
@@ -328,4 +339,5 @@ Alpine.data('nexoApp', () => ({
 }));
 
 window.Alpine = Alpine;
+window.nexoDebug = { db, sincronizarTodo, verificarOutboxManual };
 Alpine.start();
