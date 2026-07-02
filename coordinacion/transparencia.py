@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db.models import Avg, Count, ExpressionWrapper, F, fields
+from django.db.models import Avg, Count, ExpressionWrapper, F, Q, fields
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .geo import point_a_dict
-from .models import Asignacion, Donacion, Envio, Necesidad, Organizacion
+from .models import Donacion, Envio, Necesidad, Organizacion
 
 
 PIPELINE_DONACION = (
@@ -27,7 +27,7 @@ ESTADOS_PUBLICABLES = set(PIPELINE_DONACION)
 def _redondear_horas(delta: timedelta | None) -> float | None:
     if not delta:
         return None
-    horas = Decimal(delta.total_seconds() / 3600)
+    horas = Decimal(str(delta.total_seconds() / 3600))
     return float(horas.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
@@ -84,14 +84,16 @@ def _donacion_publica(request, donacion: Donacion) -> dict:
     centro = asignacion.necesidad.centro if asignacion else None
     necesidad = asignacion.necesidad if asignacion else None
     envio_entregado = envio if envio and envio.estado == Envio.Estado.ENTREGADO else None
+    fecha_asignacion = None
+    if asignacion:
+        fecha_asignacion = asignacion.claim_ts_servidor or asignacion.created_at
+    fecha_entrega = None
+    if envio_entregado:
+        fecha_entrega = envio_entregado.timestamp_entrega or envio_entregado.updated_at
 
     pipeline = [
         _etapa(Donacion.Estado.REGISTRADA, True, donacion.created_at),
-        _etapa(
-            Donacion.Estado.ASIGNADA,
-            asignacion is not None,
-            asignacion.claim_ts_servidor or asignacion.created_at if asignacion else None,
-        ),
+        _etapa(Donacion.Estado.ASIGNADA, asignacion is not None, fecha_asignacion),
         _etapa(
             Donacion.Estado.EN_TRANSITO,
             bool(envio and envio.estado in {Envio.Estado.EN_TRANSITO, Envio.Estado.ENTREGADO}),
@@ -100,7 +102,7 @@ def _donacion_publica(request, donacion: Donacion) -> dict:
         _etapa(
             Donacion.Estado.ENTREGADA,
             envio_entregado is not None,
-            envio_entregado.timestamp_entrega or envio_entregado.updated_at if envio_entregado else None,
+            fecha_entrega,
             gps=point_a_dict(envio_entregado.geolocalizacion_entrega)
             if envio_entregado
             else None,
@@ -153,8 +155,11 @@ def transparencia_resumen(request):
         necesidades.values("centro__estado", "centro__municipio")
         .annotate(
             total=Count("id"),
-            abiertas=Count("id", filter=F("estado").in_([Necesidad.Estado.ABIERTA, Necesidad.Estado.PARCIAL])),
-            cubiertas=Count("id", filter=F("estado").in_([Necesidad.Estado.CUBIERTA])),
+            abiertas=Count(
+                "id",
+                filter=Q(estado__in=[Necesidad.Estado.ABIERTA, Necesidad.Estado.PARCIAL]),
+            ),
+            cubiertas=Count("id", filter=Q(estado=Necesidad.Estado.CUBIERTA)),
         )
         .order_by("centro__estado", "centro__municipio")
     )
@@ -206,7 +211,11 @@ def transparencia_resumen(request):
 @permission_classes([AllowAny])
 def transparencia_donaciones(request):
     """Trazabilidad pública por donación, filtrada para donantes y prensa."""
-    limite = min(int(request.query_params.get("limite", 100)), 200)
+    try:
+        limite = int(request.query_params.get("limite", 100))
+    except ValueError:
+        limite = 100
+    limite = max(1, min(limite, 200))
     donaciones = (
         Donacion.objects.filter(estado__in=ESTADOS_PUBLICABLES)
         .select_related("donante", "item")
