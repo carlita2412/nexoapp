@@ -1,5 +1,7 @@
 import Dexie from 'dexie';
 
+const API_BASE_DEFECTO = import.meta.env.PUBLIC_NEXO_API_BASE || '/api/v1';
+
 export const db = new Dexie('nexo_pwa');
 
 db.version(1).stores({
@@ -27,7 +29,7 @@ export async function guardarAjuste(clave, valor) {
 
 export async function obtenerSesion() {
   return {
-    apiBase: await obtenerAjuste('apiBase', '/api/v1'),
+    apiBase: await obtenerAjuste('apiBase', API_BASE_DEFECTO),
     token: await obtenerAjuste('token'),
     usuario: await obtenerAjuste('usuario'),
     rol: await obtenerAjuste('rol'),
@@ -37,7 +39,7 @@ export async function obtenerSesion() {
 
 export async function guardarSesion({ apiBase, token, usuario, rol, organizacion }) {
   await db.transaction('rw', db.ajustes, async () => {
-    await guardarAjuste('apiBase', apiBase || '/api/v1');
+    await guardarAjuste('apiBase', apiBase || API_BASE_DEFECTO);
     await guardarAjuste('token', token);
     await guardarAjuste('usuario', usuario);
     await guardarAjuste('rol', rol);
