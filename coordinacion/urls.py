@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .auth_views import LoginToken
 from .fotos.vistas import FotoViewSet
 from .kobo.views import webhook_kobo
+from .transparencia import transparencia_donaciones, transparencia_resumen
 from .views import (
     AsignacionViewSet,
     CatalogoViewSet,
@@ -32,4 +33,6 @@ urlpatterns = [
     path("", include(router.urls)),
     path("sync/", sync, name="sync"),
     path("kobo/webhook/<str:tipo>/", webhook_kobo, name="kobo-webhook"),
+    path("publico/transparencia/resumen/", transparencia_resumen, name="transparencia-resumen"),
+    path("publico/transparencia/donaciones/", transparencia_donaciones, name="transparencia-donaciones"),
 ]
