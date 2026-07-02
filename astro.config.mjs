@@ -2,6 +2,8 @@ import { defineConfig } from 'astro/config';
 import tailwind from '@astrojs/tailwind';
 import { VitePWA } from '@vite-pwa/astro';
 
+const LIMITE_ZOOM_TILES = 15;
+
 export default defineConfig({
   output: 'static',
   integrations: [
@@ -30,6 +32,24 @@ export default defineConfig({
               cacheName: 'nexo-api-lectura',
               expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 7 },
               networkTimeoutSeconds: 5
+            }
+          },
+          {
+            urlPattern: ({ url }) => {
+              if (url.hostname !== 'tile.openstreetmap.org') return false;
+              const partes = url.pathname.split('/').filter(Boolean);
+              const zoom = Number(partes[0]);
+              return Number.isInteger(zoom) && zoom >= 0 && zoom <= LIMITE_ZOOM_TILES;
+            },
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'nexo-osm-tiles-z15',
+              expiration: {
+                maxEntries: 450,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+                purgeOnQuotaError: true
+              },
+              cacheableResponse: { statuses: [0, 200] }
             }
           }
         ]
