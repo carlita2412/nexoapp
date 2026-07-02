@@ -1,0 +1,395 @@
+---
+import '../styles/global.css';
+import 'leaflet/dist/leaflet.css';
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#22d3ee" />
+    <title>Nexo Campo | Mapa operativo</title>
+  </head>
+  <body>
+    <main class="app mapa-app" x-data="{}">
+      <header class="card mapa-header">
+        <div>
+          <p class="muted">Mapa operativo offline</p>
+          <h1>Centros, necesidades, donaciones y envíos</h1>
+        </div>
+        <a class="btn secondary" href="/">Inicio</a>
+      </header>
+
+      <section class="card mapa-panel" aria-label="Controles de mapa">
+        <div class="row estado-linea">
+          <span id="estadoConexion" class="pill warn">Detectando señal</span>
+          <span id="estadoCache" class="muted">Sin datos locales todavía</span>
+        </div>
+
+        <div class="grid filtros-mapa">
+          <label class="check"><input type="checkbox" id="capaCentros" checked /> Centros</label>
+          <label class="check"><input type="checkbox" id="capaNecesidades" checked /> Necesidades por prioridad</label>
+          <label class="check"><input type="checkbox" id="capaDonaciones" checked /> Donaciones disponibles</label>
+          <label class="check"><input type="checkbox" id="capaEnvios" checked /> Entregas / envíos</label>
+        </div>
+
+        <div class="row botones-mapa">
+          <button id="btnActualizarMapa" class="btn primary" type="button">Actualizar datos</button>
+          <button id="btnUbicar" class="btn secondary" type="button">Mi ubicación</button>
+        </div>
+
+        <p class="muted texto-datos">
+          Para ahorrar datos móviles, los datos se actualizan solo al tocar “Actualizar datos”. Los tiles se cachean con zoom máximo 15.
+        </p>
+      </section>
+
+      <section class="card mapa-resumen" aria-live="polite">
+        <div class="grid resumen-grid">
+          <div><strong id="totalCentros">0</strong><span>centros</span></div>
+          <div><strong id="totalNecesidades">0</strong><span>necesidades</span></div>
+          <div><strong id="totalDonaciones">0</strong><span>donaciones</span></div>
+          <div><strong id="totalEnvios">0</strong><span>envíos</span></div>
+        </div>
+      </section>
+
+      <section class="card mapa-contenedor" aria-label="Mapa Leaflet">
+        <div id="mapaNexo" role="application" aria-label="Mapa de operaciones Nexo"></div>
+      </section>
+
+      <nav class="tabs" aria-label="Navegación principal">
+        <a class="tab" href="/">Inicio</a>
+        <a class="tab" href="/mapa/">Mapa</a>
+        <a class="tab" href="/necesidades/">Necesidades</a>
+        <a class="tab" href="/donaciones/">Donaciones</a>
+        <a class="tab" href="/envios/">Envíos</a>
+      </nav>
+    </main>
+
+    <script type="module">
+      import L from 'leaflet';
+      import Dexie from 'dexie';
+      import Alpine from 'alpinejs';
+      import { Workbox } from 'workbox-window';
+
+      window.Alpine = Alpine;
+      Alpine.start();
+
+      const MAX_TILE_ZOOM = 15;
+      const API_BASE = '/api/v1';
+      const CACHE_KEY = 'mapa-operativo-v1';
+      const CAPAS = {
+        centros: L.layerGroup(),
+        necesidades: L.layerGroup(),
+        donaciones: L.layerGroup(),
+        envios: L.layerGroup()
+      };
+
+      const db = new Dexie('nexo_campo');
+      db.version(1).stores({
+        mapa: '&clave, actualizado_en',
+        outbox: '++id, estado, created_at'
+      });
+
+      const estadoConexion = document.querySelector('#estadoConexion');
+      const estadoCache = document.querySelector('#estadoCache');
+      const btnActualizar = document.querySelector('#btnActualizarMapa');
+      const btnUbicar = document.querySelector('#btnUbicar');
+      const totales = {
+        centros: document.querySelector('#totalCentros'),
+        necesidades: document.querySelector('#totalNecesidades'),
+        donaciones: document.querySelector('#totalDonaciones'),
+        envios: document.querySelector('#totalEnvios')
+      };
+
+      const mapa = L.map('mapaNexo', {
+        preferCanvas: true,
+        minZoom: 6,
+        maxZoom: MAX_TILE_ZOOM,
+        zoomControl: true,
+        attributionControl: true
+      }).setView([7.2, -66.6], 6);
+
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        minZoom: 6,
+        maxZoom: MAX_TILE_ZOOM,
+        maxNativeZoom: MAX_TILE_ZOOM,
+        detectRetina: false,
+        updateWhenIdle: true,
+        keepBuffer: 1,
+        crossOrigin: true,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(mapa);
+
+      Object.values(CAPAS).forEach((capa) => capa.addTo(mapa));
+
+      if ('serviceWorker' in navigator) {
+        const wb = new Workbox('/sw.js');
+        wb.register().catch(() => {});
+      }
+
+      function leerToken() {
+        const claves = ['nexo_token', 'token', 'auth_token'];
+        for (const clave of claves) {
+          const valor = localStorage.getItem(clave);
+          if (valor) return valor.replace(/^Token\s+/i, '');
+        }
+        try {
+          const sesion = JSON.parse(localStorage.getItem('nexo_auth') || '{}');
+          return sesion.token || '';
+        } catch {
+          return '';
+        }
+      }
+
+      function headersApi() {
+        const token = leerToken();
+        return token ? { Authorization: `Token ${token}` } : {};
+      }
+
+      async function pedirLista(ruta) {
+        const respuesta = await fetch(`${API_BASE}/${ruta}/`, {
+          headers: headersApi(),
+          cache: 'no-store'
+        });
+        if (!respuesta.ok) throw new Error(`${ruta}: HTTP ${respuesta.status}`);
+        const data = await respuesta.json();
+        return Array.isArray(data) ? data : data.results || [];
+      }
+
+      function puntoLatLng(valor) {
+        if (!valor) return null;
+        if (Array.isArray(valor) && valor.length >= 2) return [Number(valor[1]), Number(valor[0])];
+        if (valor.lat !== undefined && (valor.lon !== undefined || valor.lng !== undefined)) {
+          return [Number(valor.lat), Number(valor.lon ?? valor.lng)];
+        }
+        if (valor.type === 'Point' && Array.isArray(valor.coordinates)) {
+          return [Number(valor.coordinates[1]), Number(valor.coordinates[0])];
+        }
+        if (typeof valor === 'string') {
+          const partes = valor.trim().split(/[ ,]+/).map(Number);
+          if (partes.length >= 2) return [partes[0], partes[1]];
+        }
+        return null;
+      }
+
+      function valido(latlng) {
+        return Array.isArray(latlng) && latlng.length === 2 && latlng.every(Number.isFinite);
+      }
+
+      function indicePorId(lista) {
+        return new Map((lista || []).map((item) => [String(item.id), item]));
+      }
+
+      function nombreCatalogo(catalogos, id) {
+        const item = catalogos.get(String(id));
+        return item?.nombre || item?.codigo || 'Ítem sin nombre';
+      }
+
+      function nombreOrg(orgs, id) {
+        const org = orgs.get(String(id));
+        return org?.nombre || 'Organización';
+      }
+
+      function icono(tipo, texto, claseExtra = '') {
+        return L.divIcon({
+          className: `nexo-marker ${tipo} ${claseExtra}`,
+          html: `<span>${texto}</span>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+          popupAnchor: [0, -16]
+        });
+      }
+
+      function prioridadClase(nivel) {
+        if (String(nivel).startsWith('1_')) return 'critico';
+        if (String(nivel).startsWith('2_')) return 'urgente';
+        if (String(nivel).startsWith('3_')) return 'importante';
+        return 'rutinario';
+      }
+
+      function limpiarCapas() {
+        Object.values(CAPAS).forEach((capa) => capa.clearLayers());
+      }
+
+      function popup(titulo, filas) {
+        const detalle = filas
+          .filter(([, valor]) => valor !== undefined && valor !== null && valor !== '')
+          .map(([clave, valor]) => `<dt>${clave}</dt><dd>${valor}</dd>`)
+          .join('');
+        return `<div class="popup-nexo"><h2>${titulo}</h2><dl>${detalle}</dl></div>`;
+      }
+
+      function pintar(data) {
+        limpiarCapas();
+        const centros = data.centros || [];
+        const necesidades = data.necesidades || [];
+        const donaciones = data.donaciones || [];
+        const envios = data.envios || [];
+        const catalogos = indicePorId(data.catalogos || []);
+        const orgs = indicePorId(data.organizaciones || []);
+        const centrosPorId = indicePorId(centros);
+        const asignacionesPorId = indicePorId(data.asignaciones || []);
+        const bounds = [];
+
+        centros.forEach((centro) => {
+          const latlng = puntoLatLng(centro.geolocalizacion);
+          if (!valido(latlng)) return;
+          bounds.push(latlng);
+          L.marker(latlng, { icon: icono('centro', '+') })
+            .bindPopup(popup(centro.nombre || 'Centro de salud', [
+              ['Tipo', centro.tipo],
+              ['Estado operativo', centro.estado_operativo],
+              ['Municipio', centro.municipio],
+              ['Electricidad', centro.tiene_electricidad ? 'Sí' : 'No'],
+              ['Oxígeno', centro.tiene_oxigeno ? 'Sí' : 'No']
+            ]))
+            .addTo(CAPAS.centros);
+        });
+
+        necesidades
+          .filter((n) => !['cubierta', 'cancelada'].includes(n.estado))
+          .forEach((necesidad) => {
+            const centro = centrosPorId.get(String(necesidad.centro));
+            const latlng = puntoLatLng(centro?.geolocalizacion);
+            if (!valido(latlng)) return;
+            const clase = prioridadClase(necesidad.nivel_triage);
+            bounds.push(latlng);
+            L.marker(latlng, { icon: icono('necesidad', '!', clase), zIndexOffset: 400 })
+              .bindPopup(popup(`Necesidad: ${nombreCatalogo(catalogos, necesidad.item)}`, [
+                ['Prioridad', necesidad.nivel_triage],
+                ['Estado', necesidad.estado],
+                ['Solicitado', necesidad.cantidad_solicitada],
+                ['Cubierto', necesidad.cantidad_cubierta],
+                ['Centro', centro?.nombre],
+                ['Reportada por', nombreOrg(orgs, necesidad.reportada_por)]
+              ]))
+              .addTo(CAPAS.necesidades);
+          });
+
+        donaciones
+          .filter((d) => d.estado === 'disponible')
+          .forEach((donacion) => {
+            const latlng = puntoLatLng(donacion.ubicacion_actual);
+            if (!valido(latlng)) return;
+            bounds.push(latlng);
+            L.marker(latlng, { icon: icono('donacion', 'D'), zIndexOffset: 300 })
+              .bindPopup(popup(`Donación: ${nombreCatalogo(catalogos, donacion.item)}`, [
+                ['Cantidad', donacion.cantidad],
+                ['Condición', donacion.condicion],
+                ['Estado', donacion.estado],
+                ['Donante', nombreOrg(orgs, donacion.donante)],
+                ['Vencimiento', donacion.vencimiento || 'No aplica']
+              ]))
+              .addTo(CAPAS.donaciones);
+          });
+
+        envios.forEach((envio) => {
+          const latlng = puntoLatLng(envio.geolocalizacion_entrega);
+          if (!valido(latlng)) return;
+          const asignacion = asignacionesPorId.get(String(envio.asignacion));
+          bounds.push(latlng);
+          L.marker(latlng, { icon: icono('envio', 'E'), zIndexOffset: 500 })
+            .bindPopup(popup(`Envío: ${envio.estado}`, [
+              ['Responsable', envio.responsable],
+              ['Recibido por', envio.recibido_por],
+              ['Entrega', envio.timestamp_entrega],
+              ['Claim', asignacion?.estado_claim],
+              ['Logística', asignacion?.estado_logistico],
+              ['Notas', envio.notas]
+            ]))
+            .addTo(CAPAS.envios);
+        });
+
+        totales.centros.textContent = centros.filter((c) => valido(puntoLatLng(c.geolocalizacion))).length;
+        totales.necesidades.textContent = necesidades.filter((n) => !['cubierta', 'cancelada'].includes(n.estado)).length;
+        totales.donaciones.textContent = donaciones.filter((d) => d.estado === 'disponible').length;
+        totales.envios.textContent = envios.filter((e) => valido(puntoLatLng(e.geolocalizacion_entrega))).length;
+
+        if (bounds.length > 0) {
+          mapa.fitBounds(bounds, { padding: [28, 28], maxZoom: 12 });
+        }
+      }
+
+      async function guardarCache(data) {
+        await db.mapa.put({ clave: CACHE_KEY, actualizado_en: new Date().toISOString(), data });
+      }
+
+      async function leerCache() {
+        return db.mapa.get(CACHE_KEY);
+      }
+
+      function actualizarEstadoConexion() {
+        if (navigator.onLine) {
+          estadoConexion.textContent = 'Con señal';
+          estadoConexion.className = 'pill confirmada';
+        } else {
+          estadoConexion.textContent = 'Modo avión / sin señal';
+          estadoConexion.className = 'pill tentativa';
+        }
+      }
+
+      async function cargarDesdeCache() {
+        const registro = await leerCache();
+        if (!registro) return false;
+        pintar(registro.data);
+        estadoCache.textContent = `Datos locales: ${new Date(registro.actualizado_en).toLocaleString()}`;
+        return true;
+      }
+
+      async function actualizarDatos() {
+        btnActualizar.disabled = true;
+        btnActualizar.textContent = 'Actualizando...';
+        try {
+          const [centros, necesidades, donaciones, envios, asignaciones, catalogos, organizaciones] = await Promise.all([
+            pedirLista('centros-salud'),
+            pedirLista('necesidades'),
+            pedirLista('donaciones'),
+            pedirLista('envios'),
+            pedirLista('asignaciones'),
+            pedirLista('catalogos'),
+            pedirLista('organizaciones')
+          ]);
+          const data = { centros, necesidades, donaciones, envios, asignaciones, catalogos, organizaciones };
+          await guardarCache(data);
+          pintar(data);
+          estadoCache.textContent = `Actualizado: ${new Date().toLocaleString()}`;
+        } catch (error) {
+          const okCache = await cargarDesdeCache();
+          estadoCache.textContent = okCache
+            ? `Sin red o sesión vencida. Mostrando caché local. ${error.message}`
+            : `No se pudo cargar. Inicia sesión y actualiza con señal. ${error.message}`;
+        } finally {
+          btnActualizar.disabled = false;
+          btnActualizar.textContent = 'Actualizar datos';
+        }
+      }
+
+      function alternarCapa(id, capa) {
+        document.querySelector(id).addEventListener('change', (evento) => {
+          if (evento.target.checked) CAPAS[capa].addTo(mapa);
+          else mapa.removeLayer(CAPAS[capa]);
+        });
+      }
+
+      alternarCapa('#capaCentros', 'centros');
+      alternarCapa('#capaNecesidades', 'necesidades');
+      alternarCapa('#capaDonaciones', 'donaciones');
+      alternarCapa('#capaEnvios', 'envios');
+
+      btnActualizar.addEventListener('click', actualizarDatos);
+      btnUbicar.addEventListener('click', () => {
+        mapa.locate({ setView: true, maxZoom: 13, enableHighAccuracy: false, timeout: 6000 });
+      });
+      mapa.on('locationfound', (evento) => {
+        L.circleMarker(evento.latlng, { radius: 9, weight: 3 }).bindPopup('Tu ubicación aproximada').addTo(mapa);
+      });
+
+      window.addEventListener('online', actualizarEstadoConexion);
+      window.addEventListener('offline', actualizarEstadoConexion);
+      actualizarEstadoConexion();
+      cargarDesdeCache().then((tieneCache) => {
+        if (navigator.onLine && !tieneCache) actualizarDatos();
+      });
+    </script>
+  </body>
+</html>
