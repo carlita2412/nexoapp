@@ -1,7 +1,7 @@
 import Alpine from 'alpinejs';
 import { Workbox } from 'workbox-window';
 import { db, cerrarSesionLocal, obtenerSesion, resumenCola } from './lib/db.js';
-import { loginToken, obtenerCandidatos } from './lib/api.js';
+import { API_BASE_DEFECTO, loginToken, obtenerCandidatos } from './lib/api.js';
 import { comprimirFoto } from './lib/foto.js';
 import {
   encolarEvento,
@@ -32,14 +32,14 @@ Alpine.data('nexoApp', () => ({
   mensaje: '',
   error: '',
   sesion: {
-    apiBase: '/api/v1',
+    apiBase: API_BASE_DEFECTO,
     token: null,
     usuario: null,
     rol: null,
     organizacion: null,
   },
   login: {
-    apiBase: '/api/v1',
+    apiBase: API_BASE_DEFECTO,
     username: '',
     password: '',
   },
@@ -94,7 +94,7 @@ Alpine.data('nexoApp', () => ({
 
     await registrarServiceWorker();
     this.sesion = await obtenerSesion();
-    this.login.apiBase = this.sesion.apiBase || '/api/v1';
+    this.login.apiBase = this.sesion.apiBase || API_BASE_DEFECTO;
     await this.cargarLocal();
     this.listo = true;
 
@@ -155,102 +155,66 @@ Alpine.data('nexoApp', () => ({
       db.envios.orderBy('updated_at').reverse().toArray(),
     ]);
 
-    this.resumen = resumen;
-    this.cola = cola;
-    this.fotos = fotos;
-    this.catalogos = catalogos;
-    this.centros = centros;
-    this.organizaciones = organizaciones;
-    this.necesidades = necesidades;
-    this.donaciones = donaciones;
-    this.asignaciones = asignaciones;
-    this.envios = envios;
-
-    if (!this.formNecesidad.centro && centros[0]) this.formNecesidad.centro = centros[0].id;
-    if (!this.formNecesidad.item && catalogos[0]) this.formNecesidad.item = catalogos[0].id;
-    if (!this.formDonacion.item && catalogos[0]) this.formDonacion.item = catalogos[0].id;
-    if (!this.formMatching.necesidad && necesidades[0]) this.formMatching.necesidad = necesidades[0].id;
-    if (!this.formEntrega.asignacion && asignaciones[0]) this.formEntrega.asignacion = asignaciones[0].id;
+    Object.assign(this, {
+      resumen,
+      cola,
+      fotos,
+      catalogos,
+      centros,
+      organizaciones,
+      necesidades,
+      donaciones,
+      asignaciones,
+      envios,
+    });
   },
 
   nombreCatalogo(id) {
     return this.catalogos.find((item) => item.id === id)?.nombre || id;
   },
 
-  nombreCentro(id) {
-    return this.centros.find((centro) => centro.id === id)?.nombre || id;
+  async refrescar() {
+    await this.cargarLocal();
   },
 
-  nombreOrg(id) {
-    return this.organizaciones.find((org) => org.id === id)?.nombre || id;
-  },
-
-  async sincronizarSilencioso() {
-    try {
-      await sincronizarTodo();
-      await this.cargarLocal();
-    } catch (_) {
-      await this.cargarLocal();
-    }
-  },
-
-  async sincronizarManual() {
-    this.error = '';
-    this.mensaje = '';
-    try {
-      await sincronizarTodo();
-      await this.cargarLocal();
-      this.mensaje = 'Sincronización completada.';
-    } catch (error) {
-      this.error = `No se pudo sincronizar ahora: ${error.message}`;
-      await this.cargarLocal();
-    }
-  },
-
-  async descargarDeltas() {
-    this.error = '';
-    try {
-      await sincronizarDeltas();
-      await this.cargarLocal();
-      this.mensaje = 'Datos actualizados para trabajo offline.';
-    } catch (error) {
-      this.error = error.message;
-    }
+  payloadBase(entity, payload) {
+    return {
+      idempotency_key: uuid(),
+      client_timestamp: ahoraIso(),
+      entity,
+      payload,
+      estado: 'pendiente',
+      creado_en: ahoraIso(),
+      actualizado_en: ahoraIso(),
+    };
   },
 
   async crearNecesidad() {
-    this.error = '';
     const id = uuid();
     const payload = {
       id,
       centro: this.formNecesidad.centro,
       item: this.formNecesidad.item,
       cantidad_solicitada: entero(this.formNecesidad.cantidad_solicitada, 1),
-      cantidad_cubierta: 0,
       nivel_triage: this.formNecesidad.nivel_triage,
       requisitos_operacion: {
-        requiere_electricidad: Boolean(this.formNecesidad.requiere_electricidad),
-        requiere_oxigeno: Boolean(this.formNecesidad.requiere_oxigeno),
-        requiere_personal_entrenado: Boolean(this.formNecesidad.requiere_personal_entrenado),
+        requiere_electricidad: this.formNecesidad.requiere_electricidad,
+        requiere_oxigeno: this.formNecesidad.requiere_oxigeno,
+        requiere_personal_entrenado: this.formNecesidad.requiere_personal_entrenado,
       },
       estado: 'abierta',
       reportada_por: this.sesion.organizacion,
+      created_at: ahoraIso(),
+      updated_at: ahoraIso(),
     };
 
-    if (!payload.centro || !payload.item || !payload.reportada_por) {
-      this.error = 'Faltan centro, item u organización del usuario.';
-      return;
-    }
-
-    await encolarEvento('necesidad', payload);
-    await db.necesidades.put({ ...payload, version: 1, created_at: ahoraIso(), updated_at: ahoraIso() });
-    this.mensaje = 'Necesidad guardada localmente y agregada a la cola.';
-    this.formMatching.necesidad = id;
-    await this.cargarLocal();
+    await db.necesidades.put(payload);
+    await encolarEvento(this.payloadBase('necesidad', payload));
+    this.mensaje = 'Necesidad guardada localmente.';
+    await this.refrescar();
   },
 
   async crearDonacion() {
-    this.error = '';
     const id = uuid();
     const payload = {
       id,
@@ -258,132 +222,108 @@ Alpine.data('nexoApp', () => ({
       item: this.formDonacion.item,
       cantidad: entero(this.formDonacion.cantidad, 1),
       condicion: this.formDonacion.condicion,
-      vencimiento: null,
-      certificacion: '',
-      ubicacion_actual: null,
       ubicacion_texto: this.formDonacion.ubicacion_texto,
       estado: this.formDonacion.estado,
+      created_at: ahoraIso(),
+      updated_at: ahoraIso(),
     };
 
-    if (!payload.donante || !payload.item) {
-      this.error = 'Faltan item u organización donante.';
-      return;
-    }
-
-    await encolarEvento('donacion', payload);
-    await db.donaciones.put({ ...payload, version: 1, created_at: ahoraIso(), updated_at: ahoraIso() });
-    this.mensaje = 'Donación guardada localmente y agregada a la cola.';
-    await this.cargarLocal();
-  },
-
-  candidatosOffline(necesidad) {
-    if (!necesidad) return [];
-    return this.donaciones
-      .filter((donacion) => donacion.item === necesidad.item)
-      .filter((donacion) => ['disponible', 'registrada'].includes(donacion.estado))
-      .map((donacion) => ({
-        id: donacion.id,
-        item: this.nombreCatalogo(donacion.item),
-        donante: this.nombreOrg(donacion.donante),
-        cantidad_disponible: donacion.cantidad,
-        condicion: donacion.condicion,
-        ubicacion_texto: donacion.ubicacion_texto || 'Sin ubicación',
-        compatible: donacion.condicion !== 'requiere_reparacion',
-        motivo: donacion.condicion === 'requiere_reparacion'
-          ? 'Requiere reparación antes de asignar.'
-          : 'Coincide por catálogo local. Validación final en servidor al sincronizar.',
-        puntaje: donacion.condicion === 'nuevo' ? 90 : 70,
-      }));
+    await db.donaciones.put(payload);
+    await encolarEvento(this.payloadBase('donacion', payload));
+    this.mensaje = 'Donación guardada localmente.';
+    await this.refrescar();
   },
 
   async buscarCandidatos() {
     this.error = '';
-    const necesidad = this.necesidades.find((n) => n.id === this.formMatching.necesidad);
-    if (!necesidad) {
-      this.error = 'Selecciona una necesidad.';
-      return;
+    try {
+      this.candidatos = await obtenerCandidatos(this.formMatching.necesidad);
+    } catch (error) {
+      this.error = error.message;
     }
-
-    if (this.online && !this.cola.some((e) => e.payload?.id === necesidad.id && e.estado === 'pendiente')) {
-      try {
-        const data = await obtenerCandidatos(necesidad.id);
-        this.candidatos = data.candidatos || [];
-        return;
-      } catch (_) {
-        // Si falla la red, cae a matching local.
-      }
-    }
-
-    this.candidatos = this.candidatosOffline(necesidad);
   },
 
-  async reclamar(donacionId) {
-    const necesidad = this.necesidades.find((n) => n.id === this.formMatching.necesidad);
-    const donacion = this.donaciones.find((d) => d.id === donacionId) || this.candidatos.find((d) => d.id === donacionId);
-    if (!necesidad || !donacion) {
-      this.error = 'No se pudo identificar necesidad o donación.';
-      return;
-    }
-
-    const pendiente = Math.max(1, entero(necesidad.cantidad_solicitada, 1) - entero(necesidad.cantidad_cubierta, 0));
-    const disponible = entero(donacion.cantidad || donacion.cantidad_disponible, 1);
-    const cantidad = Math.min(pendiente, disponible);
-
-    await encolarEvento('claim_necesidad', {
-      necesidad: necesidad.id,
-      donacion: donacionId,
-      cantidad_asignada: cantidad,
+  async reclamar(donacion) {
+    const id = uuid();
+    const payload = {
+      id,
+      necesidad: this.formMatching.necesidad,
+      donacion,
+      cantidad_asignada: 1,
       organizacion_responsable: this.sesion.organizacion,
-    });
-
-    this.mensaje = 'Claim guardado en outbox. El servidor lo arbitrará al sincronizar.';
-    await this.cargarLocal();
+      estado_claim: 'tentativa',
+      claim_ts_cliente: ahoraIso(),
+      estado_logistico: 'pendiente',
+      created_at: ahoraIso(),
+      updated_at: ahoraIso(),
+    };
+    const evento = this.payloadBase('asignacion_claim', payload);
+    await db.asignaciones.put({ ...payload, idempotency_key: evento.idempotency_key });
+    await encolarEvento(evento);
+    this.mensaje = 'Claim tentativo guardado. Se arbitrará al sincronizar.';
+    await this.refrescar();
   },
 
-  seleccionarFoto(evento) {
-    this.formEntrega.foto = evento.target.files?.[0] || null;
+  seleccionarFoto(event) {
+    this.formEntrega.foto = event.target.files?.[0] || null;
   },
 
   async confirmarEntrega() {
-    this.error = '';
     const id = uuid();
     const payload = {
       id,
       asignacion: this.formEntrega.asignacion,
       estado: 'entregado',
       responsable: this.formEntrega.responsable,
-      foto_confirmacion_ref: '',
-      geolocalizacion_entrega: null,
-      geolocalizacion_entrega_texto: this.formEntrega.geolocalizacion_entrega_texto,
-      timestamp_entrega: ahoraIso(),
       recibido_por: this.formEntrega.recibido_por,
       notas: this.formEntrega.notas,
+      geolocalizacion_entrega_texto: this.formEntrega.geolocalizacion_entrega_texto,
+      timestamp_entrega: ahoraIso(),
+      created_at: ahoraIso(),
+      updated_at: ahoraIso(),
     };
 
-    if (!payload.asignacion || !payload.responsable) {
-      this.error = 'Selecciona asignación e indica responsable.';
-      return;
-    }
-
-    await encolarEvento('envio', payload);
-    await db.envios.put({ ...payload, version: 1, created_at: ahoraIso(), updated_at: ahoraIso() });
+    await db.envios.put(payload);
+    await encolarEvento(this.payloadBase('envio_entrega', payload));
 
     if (this.formEntrega.foto) {
       const blob = await comprimirFoto(this.formEntrega.foto);
-      await guardarFotoPendiente({
-        idempotencyKey: uuid(),
-        envio: id,
-        blob,
-      });
+      await guardarFotoPendiente({ idempotencyKey: uuid(), envio: id, blob });
     }
 
-    this.mensaje = 'Entrega guardada localmente. La foto queda en cola separada.';
-    this.formEntrega.responsable = '';
-    this.formEntrega.recibido_por = '';
-    this.formEntrega.notas = '';
-    this.formEntrega.geolocalizacion_entrega_texto = '';
-    this.formEntrega.foto = null;
-    await this.cargarLocal();
+    this.mensaje = 'Entrega y foto guardadas localmente.';
+    await this.refrescar();
+  },
+
+  async descargarDeltas() {
+    this.error = '';
+    try {
+      await sincronizarDeltas();
+      this.mensaje = 'Deltas descargados.';
+      await this.refrescar();
+    } catch (error) {
+      this.error = error.message;
+    }
+  },
+
+  async sincronizarManual() {
+    this.error = '';
+    try {
+      await sincronizarTodo();
+      this.mensaje = 'Cola sincronizada.';
+      await this.refrescar();
+    } catch (error) {
+      this.error = error.message;
+    }
+  },
+
+  async sincronizarSilencioso() {
+    try {
+      await sincronizarTodo();
+      await this.refrescar();
+    } catch (_) {
+      // La PWA sigue usable offline si falla la red o el backend.
+    }
   },
 }));
 
