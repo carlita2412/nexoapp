@@ -75,15 +75,17 @@ import Base from '../layouts/Base.astro';
           <button class="boton-secundario w-full" @click="descargarDeltas">Descargar deltas</button>
         </div>
         <template x-for="evento in cola" :key="evento.idempotency_key">
-          <article class="tarjeta space-y-2">
+          <article class="tarjeta space-y-2 border" :class="eventoEsClaim(evento) ? estadoClaimClase(estadoClaimEvento(evento)) : ''">
             <div class="flex justify-between gap-3">
               <b x-text="evento.entity"></b>
-              <span class="pill bg-slate-100 text-slate-800" x-text="evento.estado"></span>
+              <span x-show="!eventoEsClaim(evento)" class="pill bg-slate-100 text-slate-800" x-text="evento.estado"></span>
+              <span x-show="eventoEsClaim(evento)" class="pill" :class="estadoClaimPillClase(estadoClaimEvento(evento))" x-text="estadoClaimEtiqueta(estadoClaimEvento(evento))"></span>
             </div>
-            <p class="text-sm text-slate-600">Estado local: <b x-text="evento.estado_local || 'pendiente'"></b></p>
+            <p x-show="eventoEsClaim(evento)" class="text-sm font-black" x-text="estadoClaimResumen(estadoClaimEvento(evento))"></p>
+            <p x-show="!eventoEsClaim(evento)" class="text-sm text-slate-600">Estado local: <b x-text="evento.estado_local || 'pendiente'"></b></p>
             <p class="break-all text-xs text-slate-500">ID: <span x-text="evento.idempotency_key"></span></p>
             <p class="text-xs text-slate-500">Fecha: <span x-text="fechaEvento(evento)"></span> · Intentos: <span x-text="evento.intentos || 0"></span></p>
-            <p class="rounded-2xl bg-slate-50 p-3 text-sm" x-text="detalleEvento(evento)"></p>
+            <p class="rounded-2xl bg-white/70 p-3 text-sm font-semibold" x-text="detalleEvento(evento)"></p>
           </article>
         </template>
       </section>
@@ -116,17 +118,54 @@ import Base from '../layouts/Base.astro';
           <button class="boton-secundario w-full" @click="buscarCandidatos">Buscar candidatos</button>
         </div>
         <template x-for="c in candidatos" :key="c.id"><article class="tarjeta space-y-2"><b x-text="c.item"></b><p class="text-sm" x-text="c.motivo"></p><p class="text-sm">Cantidad: <span x-text="c.cantidad_disponible"></span></p><button class="boton-alerta w-full" @click="reclamar(c.id)" :disabled="!c.compatible">Reclamar offline</button></article></template>
+        <div class="tarjeta space-y-3">
+          <h3 class="text-lg font-black">Detalle de matching / claim</h3>
+          <p class="text-sm text-slate-600">Cada claim queda tentativo localmente hasta que el servidor arbitra y devuelve el resultado real.</p>
+          <template x-for="a in asignacionesMatching()" :key="a.id">
+            <article class="rounded-2xl border p-3" :class="estadoClaimClase(a.estado_claim)">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-black uppercase tracking-wide" x-text="estadoClaimResumen(a.estado_claim)"></p>
+                  <b x-text="estadoClaimEtiqueta(a.estado_claim)"></b>
+                </div>
+                <span class="pill" :class="estadoClaimPillClase(a.estado_claim)" x-text="a.estado_claim"></span>
+              </div>
+              <p class="mt-2 text-sm font-semibold" x-text="estadoClaimMensaje(a.estado_claim)"></p>
+              <p class="mt-2 break-all text-xs opacity-80">Asignación: <span x-text="a.id"></span></p>
+            </article>
+          </template>
+          <p x-show="asignacionesMatching().length === 0" class="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">Sin claims locales o sincronizados para esta necesidad.</p>
+        </div>
       </section>
 
-      <section x-show="pestaña === 'entrega'" class="tarjeta space-y-3">
-        <h2 class="text-xl font-black">Confirmación de entrega</h2>
-        <label class="etiqueta">Asignación</label><select class="campo" x-model="formEntrega.asignacion"><template x-for="a in asignaciones" :key="a.id"><option :value="a.id" x-text="`${a.estado_claim} · ${a.id}`"></option></template></select>
-        <label class="etiqueta">Responsable</label><input class="campo" x-model="formEntrega.responsable" />
-        <label class="etiqueta">Recibido por</label><input class="campo" x-model="formEntrega.recibido_por" />
-        <label class="etiqueta">Ubicación / referencia</label><input class="campo" x-model="formEntrega.geolocalizacion_entrega_texto" />
-        <label class="etiqueta">Notas</label><textarea class="campo" rows="3" x-model="formEntrega.notas"></textarea>
-        <label class="etiqueta">Foto</label><input class="campo" type="file" accept="image/*" @change="seleccionarFoto" />
-        <button class="boton-primario w-full" @click="confirmarEntrega">Guardar entrega offline</button>
+      <section x-show="pestaña === 'entrega'" class="space-y-3">
+        <div class="tarjeta space-y-3">
+          <h2 class="text-xl font-black">Confirmación de entrega</h2>
+          <label class="etiqueta">Asignación</label><select class="campo" x-model="formEntrega.asignacion"><template x-for="a in asignaciones" :key="a.id"><option :value="a.id" x-text="`${estadoClaimEtiqueta(a.estado_claim)} · ${a.id}`"></option></template></select>
+          <label class="etiqueta">Responsable</label><input class="campo" x-model="formEntrega.responsable" />
+          <label class="etiqueta">Recibido por</label><input class="campo" x-model="formEntrega.recibido_por" />
+          <label class="etiqueta">Ubicación / referencia</label><input class="campo" x-model="formEntrega.geolocalizacion_entrega_texto" />
+          <label class="etiqueta">Notas</label><textarea class="campo" rows="3" x-model="formEntrega.notas"></textarea>
+          <label class="etiqueta">Foto</label><input class="campo" type="file" accept="image/*" @change="seleccionarFoto" />
+          <button class="boton-primario w-full" @click="confirmarEntrega">Guardar entrega offline</button>
+        </div>
+        <div class="tarjeta space-y-3">
+          <h3 class="text-lg font-black">Listado de asignaciones</h3>
+          <template x-for="a in asignaciones" :key="a.id">
+            <article class="rounded-2xl border p-3" :class="estadoClaimClase(a.estado_claim)">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-black uppercase tracking-wide" x-text="estadoClaimResumen(a.estado_claim)"></p>
+                  <b x-text="estadoClaimEtiqueta(a.estado_claim)"></b>
+                </div>
+                <span class="pill" :class="estadoClaimPillClase(a.estado_claim)" x-text="a.estado_claim"></span>
+              </div>
+              <p class="mt-2 text-sm font-semibold" x-text="estadoClaimMensaje(a.estado_claim)"></p>
+              <p class="mt-2 break-all text-xs opacity-80">Necesidad: <span x-text="a.necesidad"></span></p>
+            </article>
+          </template>
+          <p x-show="asignaciones.length === 0" class="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">Aún no hay asignaciones locales.</p>
+        </div>
       </section>
     </section>
   </main>
