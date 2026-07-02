@@ -1,0 +1,48 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Mapa operativo · Nexo">
+  <main class="mx-auto min-h-screen max-w-3xl px-4 py-4 pb-24">
+    <header class="mb-4 rounded-3xl bg-slate-900 p-5 text-white shadow-lg">
+      <p class="text-sm font-bold uppercase tracking-wide text-slate-300">Nexo</p>
+      <h1 class="text-2xl font-black">Mapa operativo</h1>
+      <p class="mt-1 text-sm text-slate-300">Vista móvil para centros de salud, necesidades, donaciones y entregas.</p>
+    </header>
+
+    <section class="tarjeta space-y-4">
+      <div class="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+        <p class="text-5xl">🗺️</p>
+        <h2 class="mt-3 text-xl font-black">Mapa offline en preparación</h2>
+        <p class="mt-2 text-sm text-slate-600">
+          Esta ruta ya está disponible. El siguiente incremento debe conectar Leaflet/OpenStreetMap,
+          pintar centros y cachear tiles limitados para uso con mala señal.
+        </p>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <article class="rounded-2xl bg-emerald-50 p-4">
+          <b>Centros de salud</b>
+          <p class="mt-1 text-sm text-slate-600">Ubicación, estado operativo y capacidades.</p>
+        </article>
+        <article class="rounded-2xl bg-amber-50 p-4">
+          <b>Necesidades</b>
+          <p class="mt-1 text-sm text-slate-600">Prioridad por triage y cobertura pendiente.</p>
+        </article>
+        <article class="rounded-2xl bg-sky-50 p-4">
+          <b>Donaciones</b>
+          <p class="mt-1 text-sm text-slate-600">Recursos disponibles para matching.</p>
+        </article>
+        <article class="rounded-2xl bg-violet-50 p-4">
+          <b>Entregas</b>
+          <p class="mt-1 text-sm text-slate-600">Confirmaciones con foto y ubicación.</p>
+        </article>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Navegación principal">
+      <a class="tab" href="/">Inicio</a>
+      <a class="tab" href="/mapa/">Mapa</a>
+      <a class="tab" href="/transparencia/">Transparencia</a>
+    </nav>
+  </main>
+</Base>
