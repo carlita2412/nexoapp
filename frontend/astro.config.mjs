@@ -2,11 +2,21 @@ import { defineConfig } from 'astro/config';
 import tailwind from '@astrojs/tailwind';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const backendLocal = process.env.NEXO_BACKEND_URL || 'http://127.0.0.1:8000';
+
 export default defineConfig({
   integrations: [
     tailwind({ applyBaseStyles: false }),
   ],
   vite: {
+    server: {
+      proxy: {
+        '/api': {
+          target: backendLocal,
+          changeOrigin: true,
+        },
+      },
+    },
     plugins: [
       VitePWA({
         registerType: 'autoUpdate',
@@ -26,15 +36,15 @@ export default defineConfig({
               src: '/pwa-192.svg',
               sizes: '192x192',
               type: 'image/svg+xml',
-              purpose: 'any maskable'
+              purpose: 'any maskable',
             },
             {
               src: '/pwa-512.svg',
               sizes: '512x512',
               type: 'image/svg+xml',
-              purpose: 'any maskable'
-            }
-          ]
+              purpose: 'any maskable',
+            },
+          ],
         },
         workbox: {
           navigateFallback: '/',
@@ -46,7 +56,7 @@ export default defineConfig({
               options: {
                 cacheName: 'nexo-paginas',
                 networkTimeoutSeconds: 4,
-              }
+              },
             },
             {
               urlPattern: ({ url }) => url.pathname.startsWith('/api/v1/sync/'),
@@ -61,20 +71,20 @@ export default defineConfig({
                 expiration: {
                   maxEntries: 80,
                   maxAgeSeconds: 60 * 60,
-                }
-              }
+                },
+              },
             },
             {
               urlPattern: ({ request }) => ['script', 'style', 'worker', 'font'].includes(request.destination),
               handler: 'StaleWhileRevalidate',
-              options: { cacheName: 'nexo-shell' }
-            }
-          ]
+              options: { cacheName: 'nexo-shell' },
+            },
+          ],
         },
         devOptions: {
-          enabled: true
-        }
-      })
-    ]
-  }
+          enabled: true,
+        },
+      }),
+    ],
+  },
 });
