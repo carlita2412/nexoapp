@@ -1,24 +1,39 @@
 import { guardarSesion, obtenerSesion } from './db.js';
 
+export const API_BASE_DEFECTO = import.meta.env.PUBLIC_NEXO_API_BASE || '/api/v1';
+
 function limpiarBase(apiBase) {
-  return (apiBase || '/api/v1').replace(/\/$/, '');
+  return (apiBase || API_BASE_DEFECTO).replace(/\/$/, '');
+}
+
+function mensajeErrorLogin(error) {
+  if (error instanceof TypeError) {
+    return 'No se pudo conectar con la API. Revisa API base, CORS y que Django esté corriendo en http://127.0.0.1:8000.';
+  }
+  return error.message || 'No se pudo iniciar sesión. Revisa usuario, clave o conexión.';
 }
 
 export async function loginToken({ apiBase, username, password }) {
   const base = limpiarBase(apiBase);
-  const respuesta = await fetch(`${base}/auth/token/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
 
-  if (!respuesta.ok) {
-    throw new Error('No se pudo iniciar sesión. Revisa usuario, clave o conexión.');
+  try {
+    const respuesta = await fetch(`${base}/auth/token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (!respuesta.ok) {
+      const texto = await respuesta.text();
+      throw new Error(texto || 'No se pudo iniciar sesión. Revisa usuario, clave o conexión.');
+    }
+
+    const data = await respuesta.json();
+    await guardarSesion({ apiBase: base, ...data });
+    return { apiBase: base, ...data };
+  } catch (error) {
+    throw new Error(mensajeErrorLogin(error));
   }
-
-  const data = await respuesta.json();
-  await guardarSesion({ apiBase: base, ...data });
-  return { apiBase: base, ...data };
 }
 
 export async function apiFetch(path, opciones = {}) {
