@@ -74,7 +74,10 @@ function estadoSincronizacion(estadoServidor) {
 function estadoLocalResultado(resultado, evento) {
   if (resultado.estado === 'superada') return 'superada';
   if (ESTADOS_SERVIDOR_OK.has(resultado.estado)) {
-    return resultado.estado_claim || resultado.payload?.estado_claim || resultado.registro?.estado_claim || 'confirmada';
+    if (evento.entity === 'asignacion_claim') {
+      return resultado.estado_claim || resultado.payload?.estado_claim || resultado.registro?.estado_claim || 'confirmada';
+    }
+    return resultado.payload?.estado || resultado.registro?.estado || evento.payload?.estado || evento.estado_local;
   }
   return resultado.estado || 'conflicto';
 }
