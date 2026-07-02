@@ -2,16 +2,35 @@
 import Base from '../layouts/Base.astro';
 ---
 <Base title="Nexo PWA Offline">
-  <main x-data="nexoApp" x-init="init" x-cloak class="mx-auto min-h-screen max-w-3xl px-4 py-4 pb-24">
-    <header class="mb-4 rounded-3xl bg-slate-900 p-5 text-white shadow-lg">
+  <main x-data="nexoApp" x-init="init" x-cloak class="mx-auto min-h-screen max-w-3xl px-4 py-3 pb-24">
+    <header class="sticky top-2 z-20 mb-4 space-y-3 rounded-3xl bg-slate-900 p-4 text-white shadow-lg">
       <div class="flex items-start justify-between gap-3">
         <div>
           <p class="text-sm font-bold uppercase tracking-wide text-slate-300">Nexo</p>
           <h1 class="text-2xl font-black">PWA offline</h1>
           <p class="mt-1 text-sm text-slate-300">Captura, matching, claim y entregas.</p>
         </div>
-        <span class="pill" :class="online ? 'bg-emerald-300 text-emerald-950' : 'bg-amber-300 text-amber-950'" x-text="estadoConexionTexto"></span>
+        <span class="pill shrink-0" :class="online ? 'bg-emerald-300 text-emerald-950' : 'bg-amber-300 text-amber-950'" x-text="estadoConexionTexto"></span>
       </div>
+
+      <section class="rounded-2xl border p-3 shadow-sm" :class="syncBadgeClase" aria-live="polite">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-xs font-black uppercase tracking-wide">Sincronización</p>
+            <p class="truncate text-lg font-black" x-text="syncEstadoTexto"></p>
+            <p class="text-xs font-semibold" x-text="syncResumenCorto"></p>
+          </div>
+          <button class="boton-mini shrink-0" @click="sincronizarManual">Sincronizar ahora</button>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+          <p><b>Eventos:</b> <span x-text="sync.pendientes || 0"></span></p>
+          <p><b>Fotos:</b> <span x-text="sync.fotos || 0"></span></p>
+          <p><b>Intento:</b> <span x-text="fechaSync(sync.ultimoIntentoSync)"></span></p>
+          <p><b>OK:</b> <span x-text="fechaSync(sync.ultimoSyncOk)"></span></p>
+        </div>
+        <p x-show="!online" class="mt-2 rounded-xl bg-white/70 p-2 text-xs font-bold" x-text="syncOfflineTexto"></p>
+        <p x-show="sync.ultimoErrorSync" class="mt-2 rounded-xl bg-white/70 p-2 text-xs font-bold">Error: <span x-text="sync.ultimoErrorSync"></span></p>
+      </section>
     </header>
 
     <section x-show="listo && !autenticado" class="tarjeta space-y-4">
@@ -52,8 +71,8 @@ import Base from '../layouts/Base.astro';
             <div class="rounded-2xl bg-red-100 p-3 text-center"><b x-text="resumen.conflicto"></b><br><small>conflictos</small></div>
             <div class="rounded-2xl bg-sky-100 p-3 text-center"><b x-text="resumen.fotos"></b><br><small>fotos</small></div>
           </div>
-          <button class="boton-primario w-full" @click="reintentarSincronizacionManual" :disabled="!online">Reintentar sincronización manual</button>
-          <button class="boton-secundario w-full" @click="descargarDeltas" :disabled="!online">Descargar deltas</button>
+          <button class="boton-primario w-full" @click="reintentarSincronizacionManual">Reintentar sincronización manual</button>
+          <button class="boton-secundario w-full" @click="descargarDeltas">Descargar deltas</button>
         </div>
         <template x-for="evento in cola" :key="evento.idempotency_key">
           <article class="tarjeta space-y-2">
