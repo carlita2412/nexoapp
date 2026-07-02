@@ -17,7 +17,9 @@ import Base from '../layouts/Base.astro';
     <section x-show="listo && !autenticado" class="tarjeta space-y-4">
       <h2 class="text-xl font-black">Login por token</h2>
       <p class="text-sm text-slate-600">Entra una vez con conexión. Luego el token queda local para operar offline.</p>
-      <label class="etiqueta">API base</label><input class="campo" x-model="login.apiBase" placeholder="/api/v1" />
+      <label class="etiqueta">API base</label>
+      <input class="campo" x-model="login.apiBase" placeholder="/api/v1 o http://127.0.0.1:8000/api/v1" />
+      <p class="text-xs text-slate-500">En desarrollo usa <b>/api/v1</b> si corres Astro desde la carpeta <b>frontend</b>; el proxy local enviará la petición a Django.</p>
       <label class="etiqueta">Usuario</label><input class="campo" x-model="login.username" />
       <label class="etiqueta">Contraseña</label><input class="campo" x-model="login.password" type="password" />
       <button class="boton-primario w-full" @click="iniciarSesion">Entrar</button>
