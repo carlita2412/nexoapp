@@ -1,0 +1,59 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Transparencia · Nexo">
+  <main class="mx-auto min-h-screen max-w-3xl px-4 py-4 pb-24">
+    <header class="mb-4 rounded-3xl bg-slate-900 p-5 text-white shadow-lg">
+      <p class="text-sm font-bold uppercase tracking-wide text-slate-300">Nexo</p>
+      <h1 class="text-2xl font-black">Portal de transparencia</h1>
+      <p class="mt-1 text-sm text-slate-300">Seguimiento público de donaciones, asignaciones, envíos y entregas.</p>
+    </header>
+
+    <section class="tarjeta space-y-4">
+      <div class="rounded-3xl bg-slate-50 p-5">
+        <h2 class="text-xl font-black">Ruta pública disponible</h2>
+        <p class="mt-2 text-sm text-slate-600">
+          Esta página deja activa la ruta <b>/transparencia/</b>. El siguiente paso es conectarla
+          a endpoints públicos de solo lectura para mostrar el pipeline de cada donación sin exponer PII.
+        </p>
+      </div>
+
+      <div class="space-y-3">
+        <article class="rounded-2xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <b>Registrada</b>
+            <span class="pill bg-slate-100 text-slate-800">Paso 1</span>
+          </div>
+          <p class="mt-1 text-sm text-slate-600">La donación fue registrada por una organización o donante.</p>
+        </article>
+        <article class="rounded-2xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <b>Asignada</b>
+            <span class="pill bg-amber-100 text-amber-900">Paso 2</span>
+          </div>
+          <p class="mt-1 text-sm text-slate-600">La donación fue vinculada a una necesidad compatible.</p>
+        </article>
+        <article class="rounded-2xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <b>En tránsito</b>
+            <span class="pill bg-sky-100 text-sky-900">Paso 3</span>
+          </div>
+          <p class="mt-1 text-sm text-slate-600">La logística está en curso.</p>
+        </article>
+        <article class="rounded-2xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <b>Entregada / en uso</b>
+            <span class="pill bg-emerald-100 text-emerald-900">Paso 4</span>
+          </div>
+          <p class="mt-1 text-sm text-slate-600">Entrega confirmada con evidencia, foto comprimida y ubicación cuando aplique.</p>
+        </article>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Navegación principal">
+      <a class="tab" href="/">Inicio</a>
+      <a class="tab" href="/mapa/">Mapa</a>
+      <a class="tab" href="/transparencia/">Transparencia</a>
+    </nav>
+  </main>
+</Base>
