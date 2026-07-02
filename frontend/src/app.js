@@ -1,6 +1,6 @@
 import Alpine from 'alpinejs';
 import { Workbox } from 'workbox-window';
-import { db, cerrarSesionLocal, obtenerSesion, resumenCola } from './lib/db.js';
+import { db, cerrarSesionLocal, obtenerEstadoSync, obtenerSesion, resumenCola } from './lib/db.js';
 import { API_BASE_DEFECTO, loginToken, obtenerCandidatos } from './lib/api.js';
 import { comprimirFoto } from './lib/foto.js';
 import {
@@ -14,6 +14,7 @@ import {
 
 const ahoraIso = () => new Date().toISOString();
 const entero = (valor, defecto = 0) => Number.parseInt(valor || defecto, 10);
+const SYNC_EVENTO_CAMBIO = 'nexo-sync-cambio';
 
 async function registrarServiceWorker() {
   if ('serviceWorker' in navigator) {
@@ -26,12 +27,27 @@ function estadoConexion() {
   return navigator.onLine ? 'en_linea' : 'offline';
 }
 
+function formatearFechaSync(valor) {
+  if (!valor) return 'Nunca';
+  try {
+    return new Intl.DateTimeFormat('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(valor));
+  } catch (_) {
+    return valor;
+  }
+}
+
 Alpine.data('nexoApp', () => ({
   listo: false,
   online: navigator.onLine,
   pestaña: 'cola',
   mensaje: '',
   error: '',
+  refrescoSyncTimer: null,
   sesion: {
     apiBase: API_BASE_DEFECTO,
     token: null,
@@ -45,6 +61,14 @@ Alpine.data('nexoApp', () => ({
     password: '',
   },
   resumen: { pendientes: 0, sincronizados: 0, conflicto: 0, superada: 0, fotos: 0 },
+  sync: {
+    pendientes: 0,
+    fotos: 0,
+    ultimoSyncOk: null,
+    ultimoIntentoSync: null,
+    ultimoErrorSync: null,
+    estadoActual: 'pendiente',
+  },
   cola: [],
   fotos: [],
   catalogos: [],
@@ -87,11 +111,14 @@ Alpine.data('nexoApp', () => ({
     this.online = navigator.onLine;
     window.addEventListener('online', async () => {
       this.online = true;
+      await this.refrescarSyncVisible();
       await this.sincronizarSilencioso();
     });
-    window.addEventListener('offline', () => {
+    window.addEventListener('offline', async () => {
       this.online = false;
+      await this.refrescarSyncVisible();
     });
+    window.addEventListener(SYNC_EVENTO_CAMBIO, () => this.refrescarSyncVisible());
 
     await registrarServiceWorker();
     this.sesion = await obtenerSesion();
@@ -110,6 +137,36 @@ Alpine.data('nexoApp', () => ({
 
   get estadoConexionTexto() {
     return estadoConexion() === 'en_linea' ? 'En línea' : 'Modo avión / sin señal';
+  },
+
+  get syncEstadoTexto() {
+    const etiquetas = {
+      sincronizando: 'Sincronizando',
+      al_dia: 'Al día',
+      pendiente: 'Pendiente',
+      error: 'Error',
+    };
+    return etiquetas[this.sync.estadoActual] || 'Pendiente';
+  },
+
+  get syncBadgeClase() {
+    if (!this.online) return 'border-amber-300 bg-amber-50 text-amber-950';
+    if (this.sync.estadoActual === 'sincronizando') return 'border-sky-300 bg-sky-50 text-sky-950';
+    if (this.sync.estadoActual === 'error') return 'border-red-300 bg-red-50 text-red-950';
+    if (this.sync.estadoActual === 'al_dia') return 'border-emerald-300 bg-emerald-50 text-emerald-950';
+    return 'border-orange-300 bg-orange-50 text-orange-950';
+  },
+
+  get syncResumenCorto() {
+    return `${this.sync.pendientes || 0} eventos · ${this.sync.fotos || 0} fotos`;
+  },
+
+  get syncOfflineTexto() {
+    return 'Modo avión/sin señal: se guardará localmente.';
+  },
+
+  fechaSync(valor) {
+    return formatearFechaSync(valor);
   },
 
   async iniciarSesion() {
@@ -131,9 +188,16 @@ Alpine.data('nexoApp', () => ({
     this.mensaje = 'Sesión local cerrada.';
   },
 
+  async refrescarSyncVisible() {
+    const [resumen, sync] = await Promise.all([resumenCola(), obtenerEstadoSync()]);
+    this.resumen = resumen;
+    this.sync = sync;
+  },
+
   async cargarLocal() {
     const [
       resumen,
+      sync,
       cola,
       fotos,
       catalogos,
@@ -145,6 +209,7 @@ Alpine.data('nexoApp', () => ({
       envios,
     ] = await Promise.all([
       resumenCola(),
+      obtenerEstadoSync(),
       db.outbox.orderBy('creado_en').reverse().toArray(),
       db.fotos_pendientes.orderBy('creado_en').reverse().toArray(),
       db.catalogos.orderBy('nombre').toArray(),
@@ -158,6 +223,7 @@ Alpine.data('nexoApp', () => ({
 
     Object.assign(this, {
       resumen,
+      sync,
       cola,
       fotos,
       catalogos,
@@ -296,36 +362,40 @@ Alpine.data('nexoApp', () => ({
 
   async descargarDeltas() {
     this.error = '';
+    if (!this.online) {
+      this.mensaje = this.syncOfflineTexto;
+      await this.refrescar();
+      return;
+    }
     try {
       await sincronizarDeltas();
       this.mensaje = 'Deltas descargados.';
       await this.refrescar();
     } catch (error) {
       this.error = error.message;
+      await this.refrescar();
     }
   },
 
   async sincronizarManual() {
     this.error = '';
+    if (!this.online) {
+      this.mensaje = this.syncOfflineTexto;
+      await this.refrescar();
+      return;
+    }
     try {
       await sincronizarTodo();
-      this.mensaje = 'Cola sincronizada.';
+      this.mensaje = 'Sincronización manual completada.';
       await this.refrescar();
     } catch (error) {
       this.error = error.message;
+      await this.refrescar();
     }
   },
 
   async reintentarSincronizacionManual() {
-    this.error = '';
-    try {
-      await sincronizarTodo();
-      this.mensaje = 'Reintento manual completado.';
-      await this.refrescar();
-    } catch (error) {
-      this.error = error.message;
-      await this.refrescar();
-    }
+    await this.sincronizarManual();
   },
 
   async sincronizarSilencioso() {
@@ -333,6 +403,7 @@ Alpine.data('nexoApp', () => ({
       await sincronizarTodo();
       await this.refrescar();
     } catch (_) {
+      await this.refrescarSyncVisible();
       // La PWA sigue usable offline si falla la red o el backend.
     }
   },
