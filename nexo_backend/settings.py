@@ -104,6 +104,7 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, []),
     CSRF_TRUSTED_ORIGINS=(list, []),
     CORS_ALLOWED_ORIGINS=(list, []),
+    CORS_ALLOWED_ORIGIN_REGEXES=(list, []),
     DB_NAME=(str, "nexo"),
     DB_USER=(str, "nexo"),
     DB_PASSWORD=(str, ""),
@@ -127,17 +128,26 @@ DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS", default=[])
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS", default=[])
+CORS_ALLOWED_ORIGIN_REGEXES = env("CORS_ALLOWED_ORIGIN_REGEXES", default=[])
 
 if DEBUG:
     origenes_desarrollo = [
         "http://localhost:4321",
         "http://127.0.0.1:4321",
     ]
+    origenes_regex_desarrollo = [
+        r"^http://192\.168\.\d{1,3}\.\d{1,3}:4321$",
+        r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}:4321$",
+        r"^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}:4321$",
+    ]
     for origen in origenes_desarrollo:
         if origen not in CORS_ALLOWED_ORIGINS:
             CORS_ALLOWED_ORIGINS.append(origen)
         if origen not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(origen)
+    for patron in origenes_regex_desarrollo:
+        if patron not in CORS_ALLOWED_ORIGIN_REGEXES:
+            CORS_ALLOWED_ORIGIN_REGEXES.append(patron)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
@@ -194,7 +204,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-            ],
+            ]
         },
     }
 ]
