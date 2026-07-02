@@ -16,6 +16,45 @@ const ahoraIso = () => new Date().toISOString();
 const entero = (valor, defecto = 0) => Number.parseInt(valor || defecto, 10);
 const SYNC_EVENTO_CAMBIO = 'nexo-sync-cambio';
 
+const MENSAJE_CLAIM_TENTATIVA = 'Pendiente de sincronizar. Aún no está confirmado por servidor.';
+const MENSAJE_CLAIM_CONFIRMADA = 'Claim confirmado. Puedes coordinar envío.';
+const MENSAJE_CLAIM_SUPERADA = 'Otra organización ya cubre esta necesidad. Revisa candidatos alternativos.';
+
+const ESTADOS_CLAIM_UI = {
+  tentativa: {
+    etiqueta: 'Tentativa',
+    resumen: 'Pendiente de arbitraje',
+    mensaje: MENSAJE_CLAIM_TENTATIVA,
+    clase: 'border-amber-300 bg-amber-50 text-amber-950',
+    pill: 'bg-amber-200 text-amber-950',
+  },
+  confirmada: {
+    etiqueta: 'Confirmada',
+    resumen: 'Asignación ganada',
+    mensaje: MENSAJE_CLAIM_CONFIRMADA,
+    clase: 'border-emerald-300 bg-emerald-50 text-emerald-950',
+    pill: 'bg-emerald-200 text-emerald-950',
+  },
+  superada: {
+    etiqueta: 'Superada',
+    resumen: 'Otra organización cubre esto',
+    mensaje: MENSAJE_CLAIM_SUPERADA,
+    clase: 'border-red-300 bg-red-50 text-red-950',
+    pill: 'bg-red-200 text-red-950',
+  },
+  liberada: {
+    etiqueta: 'Liberada',
+    resumen: 'Claim liberado',
+    mensaje: 'Claim liberado. La necesidad puede volver a ser reclamada.',
+    clase: 'border-slate-300 bg-slate-50 text-slate-900',
+    pill: 'bg-slate-200 text-slate-900',
+  },
+};
+
+function metaEstadoClaim(estado) {
+  return ESTADOS_CLAIM_UI[estado] || ESTADOS_CLAIM_UI.liberada;
+}
+
 async function registrarServiceWorker() {
   if ('serviceWorker' in navigator) {
     const wb = new Workbox('/sw.js');
@@ -240,12 +279,57 @@ Alpine.data('nexoApp', () => ({
     return this.catalogos.find((item) => item.id === id)?.nombre || id;
   },
 
+  estadoClaimMeta(estado) {
+    return metaEstadoClaim(estado);
+  },
+
+  estadoClaimEtiqueta(estado) {
+    return this.estadoClaimMeta(estado).etiqueta;
+  },
+
+  estadoClaimResumen(estado) {
+    return this.estadoClaimMeta(estado).resumen;
+  },
+
+  estadoClaimMensaje(estado) {
+    return this.estadoClaimMeta(estado).mensaje;
+  },
+
+  estadoClaimClase(estado) {
+    return this.estadoClaimMeta(estado).clase;
+  },
+
+  estadoClaimPillClase(estado) {
+    return this.estadoClaimMeta(estado).pill;
+  },
+
+  eventoEsClaim(evento) {
+    return evento.entity === 'asignacion_claim' || Boolean(evento.payload?.estado_claim);
+  },
+
+  estadoClaimEvento(evento) {
+    return (
+      evento.estado_local ||
+      evento.respuesta?.estado_claim ||
+      evento.respuesta?.payload?.estado_claim ||
+      evento.respuesta?.registro?.estado_claim ||
+      evento.payload?.estado_claim ||
+      'tentativa'
+    );
+  },
+
+  asignacionesMatching() {
+    if (!this.formMatching.necesidad) return this.asignaciones;
+    return this.asignaciones.filter((asignacion) => asignacion.necesidad === this.formMatching.necesidad);
+  },
+
   fechaEvento(evento) {
     return evento.creado_en || evento.client_timestamp || '';
   },
 
   detalleEvento(evento) {
     if (evento.error) return evento.error;
+    if (this.eventoEsClaim(evento)) return this.estadoClaimMensaje(this.estadoClaimEvento(evento));
     if (!evento.respuesta) return 'Pendiente de sincronizar.';
     if (evento.respuesta.mensaje) return evento.respuesta.mensaje;
     return JSON.stringify(evento.respuesta);
@@ -325,7 +409,7 @@ Alpine.data('nexoApp', () => ({
     };
     const evento = await encolarEvento('asignacion_claim', payload, { estado_local: 'tentativa' });
     await db.asignaciones.put({ ...payload, idempotency_key: evento.idempotency_key });
-    this.mensaje = 'Claim tentativo guardado. Se arbitrará al sincronizar.';
+    this.mensaje = MENSAJE_CLAIM_TENTATIVA;
     await this.refrescar();
   },
 
