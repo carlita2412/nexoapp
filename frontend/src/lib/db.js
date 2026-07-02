@@ -81,8 +81,21 @@ export async function resumenCola() {
   const sincronizados = await db.outbox.where('estado').equals('sincronizado').count();
   const conflicto = await db.outbox.where('estado').equals('conflicto').count();
   const superada = await db.outbox.where('estado').equals('superada').count();
-  const fotos = await db.fotos_pendientes.where('estado').equals('pendiente').count();
-  return { pendientes, sincronizados, conflicto, superada, fotos };
+  const fotosPendientes = await db.fotos_pendientes.where('estado').equals('pendiente').count();
+  const fotosSincronizadas = await db.fotos_pendientes.where('estado').equals('sincronizado').count();
+  const fotosFallidas = await db.fotos_pendientes.where('estado').equals('fallida').count();
+  const fotos = fotosPendientes;
+
+  return {
+    pendientes,
+    sincronizados,
+    conflicto,
+    superada,
+    fotos,
+    fotosPendientes,
+    fotosSincronizadas,
+    fotosFallidas,
+  };
 }
 
 export async function obtenerEstadoSync() {
