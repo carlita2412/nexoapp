@@ -1,0 +1,48 @@
+---
+import '../styles/global.css';
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#22d3ee" />
+    <title>Nexo Campo</title>
+  </head>
+  <body>
+    <main class="app">
+      <section class="card">
+        <p class="muted">PWA operativa</p>
+        <h1>Nexo Campo</h1>
+        <p class="muted">Herramientas móviles para coordinación de necesidades, donaciones, matching, claims, envíos y mapa offline.</p>
+      </section>
+
+      <section class="grid">
+        <a class="card" href="/mapa/">
+          <h2>Mapa operativo</h2>
+          <p class="muted">Centros de salud, necesidades por prioridad, donaciones disponibles y entregas/envíos con tiles cacheados.</p>
+        </a>
+        <a class="card" href="/necesidades/">
+          <h2>Necesidades</h2>
+          <p class="muted">Registro y consulta de necesidades en campo.</p>
+        </a>
+        <a class="card" href="/donaciones/">
+          <h2>Donaciones</h2>
+          <p class="muted">Recursos disponibles para matching.</p>
+        </a>
+        <a class="card" href="/envios/">
+          <h2>Envíos</h2>
+          <p class="muted">Seguimiento logístico y confirmación de entrega.</p>
+        </a>
+      </section>
+
+      <nav class="tabs" aria-label="Navegación principal">
+        <a class="tab" href="/">Inicio</a>
+        <a class="tab" href="/mapa/">Mapa</a>
+        <a class="tab" href="/necesidades/">Necesidades</a>
+        <a class="tab" href="/donaciones/">Donaciones</a>
+        <a class="tab" href="/envios/">Envíos</a>
+      </nav>
+    </main>
+  </body>
+</html>
