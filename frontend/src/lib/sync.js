@@ -1,7 +1,8 @@
-import { db, guardarAjuste, guardarDeltas, obtenerAjuste } from './db.js';
+import { db, guardarAjuste, guardarDeltas, obtenerAjuste, resumenCola } from './db.js';
 import { pullSync, pushSync, subirFoto } from './api.js';
 
 const ESTADOS_SERVIDOR_OK = new Set(['ok', 'duplicado']);
+const EVENTO_SYNC_CAMBIO = 'nexo-sync-cambio';
 const CAMPOS_EVENTO_REQUERIDOS = [
   'idempotency_key',
   'client_timestamp',
@@ -25,6 +26,42 @@ export function uuid() {
   });
 }
 
+function ahoraIso() {
+  return new Date().toISOString();
+}
+
+function avisarCambioSync() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(EVENTO_SYNC_CAMBIO));
+  }
+}
+
+async function guardarEstadoSync({ estadoActual, intento = false, ok = false, error = null } = {}) {
+  const ahora = ahoraIso();
+
+  await db.transaction('rw', db.ajustes, async () => {
+    if (intento) await guardarAjuste('ultimoIntentoSync', ahora);
+    if (estadoActual) await guardarAjuste('estadoSyncActual', estadoActual);
+    if (ok) await guardarAjuste('ultimoSyncOk', ahora);
+    await guardarAjuste('ultimoErrorSync', error);
+  });
+
+  avisarCambioSync();
+}
+
+function resumenErroresFotos(errores = []) {
+  if (!errores.length) return null;
+  const primero = errores[0];
+  const extra = errores.length > 1 ? ` (+${errores.length - 1} mas)` : '';
+  return `Fotos pendientes: ${primero}${extra}`;
+}
+
+async function estadoPorCola(error = null) {
+  if (error) return 'error';
+  const resumen = await resumenCola();
+  return resumen.pendientes > 0 || resumen.fotos > 0 ? 'pendiente' : 'al_dia';
+}
+
 function estadoLocalInicial(entity, payload, extra = {}) {
   if (extra.estado_local) return extra.estado_local;
   if (payload?.estado_claim) return payload.estado_claim;
@@ -34,7 +71,7 @@ function estadoLocalInicial(entity, payload, extra = {}) {
 }
 
 function normalizarEvento(entity, payload, extra = {}) {
-  const ahora = new Date().toISOString();
+  const ahora = ahoraIso();
   const eventoBase = typeof entity === 'object' && entity !== null ? entity : { entity, payload, ...extra };
   const eventoPayload = eventoBase.payload;
   const eventoEntity = eventoBase.entity;
@@ -62,6 +99,8 @@ function normalizarEvento(entity, payload, extra = {}) {
 export async function encolarEvento(entity, payload, extra = {}) {
   const evento = normalizarEvento(entity, payload, extra);
   await db.outbox.put(evento);
+  const estadoActual = await estadoPorCola();
+  await guardarEstadoSync({ estadoActual });
   return evento;
 }
 
@@ -83,40 +122,49 @@ function estadoLocalResultado(resultado, evento) {
 }
 
 export async function sincronizarOutbox() {
-  const pendientes = await db.outbox.where('estado').equals('pendiente').sortBy('creado_en');
-  if (!pendientes.length) return { resultados: [] };
+  await guardarEstadoSync({ estadoActual: 'sincronizando', intento: true, error: null });
 
-  const eventos = pendientes.map(({ idempotency_key, client_timestamp, entity, payload }) => ({
-    idempotency_key,
-    client_timestamp,
-    entity,
-    payload,
-  }));
+  const pendientes = await db.outbox.where('estado').equals('pendiente').sortBy('creado_en');
 
   try {
-    const respuesta = await pushSync(eventos);
-    const resultados = respuesta.resultados || [];
-    const ahora = new Date().toISOString();
+    let respuesta = { resultados: [] };
 
-    await db.transaction('rw', db.outbox, async () => {
-      for (const resultado of resultados) {
-        const evento = pendientes.find((item) => item.idempotency_key === resultado.idempotency_key);
-        if (!evento) continue;
+    if (pendientes.length) {
+      const eventos = pendientes.map(({ idempotency_key, client_timestamp, entity, payload }) => ({
+        idempotency_key,
+        client_timestamp,
+        entity,
+        payload,
+      }));
 
-        await db.outbox.update(resultado.idempotency_key, {
-          estado: estadoSincronizacion(resultado.estado),
-          estado_local: estadoLocalResultado(resultado, evento),
-          respuesta: resultado,
-          error: null,
-          actualizado_en: ahora,
-        });
-      }
-    });
+      respuesta = await pushSync(eventos);
+      const resultados = respuesta.resultados || [];
+      const ahora = ahoraIso();
 
-    await subirFotosPendientes();
-    return respuesta;
+      await db.transaction('rw', db.outbox, async () => {
+        for (const resultado of resultados) {
+          const evento = pendientes.find((item) => item.idempotency_key === resultado.idempotency_key);
+          if (!evento) continue;
+
+          await db.outbox.update(resultado.idempotency_key, {
+            estado: estadoSincronizacion(resultado.estado),
+            estado_local: estadoLocalResultado(resultado, evento),
+            respuesta: resultado,
+            error: null,
+            actualizado_en: ahora,
+          });
+        }
+      });
+    }
+
+    const fotos = await subirFotosPendientes();
+    const errorFotos = resumenErroresFotos(fotos.errores);
+    const estadoActual = await estadoPorCola(errorFotos);
+    await guardarEstadoSync({ estadoActual, ok: !errorFotos, error: errorFotos });
+
+    return { ...respuesta, fotos };
   } catch (error) {
-    const ahora = new Date().toISOString();
+    const ahora = ahoraIso();
     await db.transaction('rw', db.outbox, async () => {
       for (const evento of pendientes) {
         await db.outbox.update(evento.idempotency_key, {
@@ -126,27 +174,47 @@ export async function sincronizarOutbox() {
         });
       }
     });
+    await guardarEstadoSync({ estadoActual: 'error', error: error.message });
     throw error;
   }
 }
 
 export async function sincronizarDeltas() {
-  const desde = await obtenerAjuste('cursorSync', null);
-  const respuesta = await pullSync(desde);
-  await guardarDeltas(respuesta.deltas || {});
-  if (respuesta.cursor) await guardarAjuste('cursorSync', respuesta.cursor);
-  return respuesta;
+  await guardarEstadoSync({ estadoActual: 'sincronizando', intento: true, error: null });
+
+  try {
+    const desde = await obtenerAjuste('cursorSync', null);
+    const respuesta = await pullSync(desde);
+    await guardarDeltas(respuesta.deltas || {});
+    if (respuesta.cursor) await guardarAjuste('cursorSync', respuesta.cursor);
+    const estadoActual = await estadoPorCola();
+    await guardarEstadoSync({ estadoActual, ok: true, error: null });
+    return respuesta;
+  } catch (error) {
+    await guardarEstadoSync({ estadoActual: 'error', error: error.message });
+    throw error;
+  }
 }
 
 export async function sincronizarTodo() {
-  const push = await sincronizarOutbox();
-  const pull = await sincronizarDeltas();
-  return { push, pull };
+  await guardarEstadoSync({ estadoActual: 'sincronizando', intento: true, error: null });
+
+  try {
+    const push = await sincronizarOutbox();
+    const pull = await sincronizarDeltas();
+    const errorFotos = resumenErroresFotos(push.fotos?.errores || []);
+    const estadoActual = await estadoPorCola(errorFotos);
+    await guardarEstadoSync({ estadoActual, ok: !errorFotos, error: errorFotos });
+    return { push, pull };
+  } catch (error) {
+    await guardarEstadoSync({ estadoActual: 'error', error: error.message });
+    throw error;
+  }
 }
 
 export async function guardarFotoPendiente({ idempotencyKey, envio, blob }) {
   if (!blob) return null;
-  const ahora = new Date().toISOString();
+  const ahora = ahoraIso();
   await db.fotos_pendientes.put({
     idempotency_key: idempotencyKey,
     envio,
@@ -157,12 +225,15 @@ export async function guardarFotoPendiente({ idempotencyKey, envio, blob }) {
     creado_en: ahora,
     actualizado_en: ahora,
   });
+  const estadoActual = await estadoPorCola();
+  await guardarEstadoSync({ estadoActual });
   return idempotencyKey;
 }
 
 export async function subirFotosPendientes() {
   const pendientes = await db.fotos_pendientes.where('estado').equals('pendiente').toArray();
   const resultados = [];
+  const errores = [];
 
   for (const foto of pendientes) {
     const envio = await db.envios.get(foto.envio);
@@ -185,18 +256,19 @@ export async function subirFotosPendientes() {
         estado: 'sincronizado',
         respuesta: resultado,
         error: null,
-        actualizado_en: new Date().toISOString(),
+        actualizado_en: ahoraIso(),
       });
       resultados.push(resultado);
     } catch (error) {
+      errores.push(error.message);
       await db.fotos_pendientes.update(foto.idempotency_key, {
         error: error.message,
-        actualizado_en: new Date().toISOString(),
+        actualizado_en: ahoraIso(),
       });
     }
   }
 
-  return resultados;
+  return { resultados, errores };
 }
 
 export async function verificarOutboxManual() {
