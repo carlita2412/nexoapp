@@ -52,14 +52,19 @@ import Base from '../layouts/Base.astro';
             <div class="rounded-2xl bg-red-100 p-3 text-center"><b x-text="resumen.conflicto"></b><br><small>conflictos</small></div>
             <div class="rounded-2xl bg-sky-100 p-3 text-center"><b x-text="resumen.fotos"></b><br><small>fotos</small></div>
           </div>
-          <button class="boton-primario w-full" @click="sincronizarManual" :disabled="!online">Sincronizar ahora</button>
+          <button class="boton-primario w-full" @click="reintentarSincronizacionManual" :disabled="!online">Reintentar sincronización manual</button>
           <button class="boton-secundario w-full" @click="descargarDeltas" :disabled="!online">Descargar deltas</button>
         </div>
         <template x-for="evento in cola" :key="evento.idempotency_key">
-          <article class="tarjeta">
-            <div class="flex justify-between gap-3"><b x-text="evento.entity"></b><span class="pill bg-slate-100 text-slate-800" x-text="evento.estado"></span></div>
-            <p class="mt-2 break-all text-xs text-slate-500" x-text="evento.idempotency_key"></p>
-            <p class="mt-2 text-sm" x-text="evento.respuesta?.mensaje || evento.error || ''"></p>
+          <article class="tarjeta space-y-2">
+            <div class="flex justify-between gap-3">
+              <b x-text="evento.entity"></b>
+              <span class="pill bg-slate-100 text-slate-800" x-text="evento.estado"></span>
+            </div>
+            <p class="text-sm text-slate-600">Estado local: <b x-text="evento.estado_local || 'pendiente'"></b></p>
+            <p class="break-all text-xs text-slate-500">ID: <span x-text="evento.idempotency_key"></span></p>
+            <p class="text-xs text-slate-500">Fecha: <span x-text="fechaEvento(evento)"></span> · Intentos: <span x-text="evento.intentos || 0"></span></p>
+            <p class="rounded-2xl bg-slate-50 p-3 text-sm" x-text="detalleEvento(evento)"></p>
           </article>
         </template>
       </section>
