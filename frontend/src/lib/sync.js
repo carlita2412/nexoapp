@@ -110,15 +110,40 @@ function estadoSincronizacion(estadoServidor) {
   return 'conflicto';
 }
 
+function estadoClaimResultado(resultado, evento) {
+  if (resultado.estado === 'superada') return 'superada';
+  if (resultado.estado_claim) return resultado.estado_claim;
+  if (resultado.payload?.estado_claim) return resultado.payload.estado_claim;
+  if (resultado.registro?.estado_claim) return resultado.registro.estado_claim;
+  if (ESTADOS_SERVIDOR_OK.has(resultado.estado)) return 'confirmada';
+  return evento.payload?.estado_claim || evento.estado_local || 'tentativa';
+}
+
 function estadoLocalResultado(resultado, evento) {
+  if (evento.entity === 'asignacion_claim') return estadoClaimResultado(resultado, evento);
   if (resultado.estado === 'superada') return 'superada';
   if (ESTADOS_SERVIDOR_OK.has(resultado.estado)) {
-    if (evento.entity === 'asignacion_claim') {
-      return resultado.estado_claim || resultado.payload?.estado_claim || resultado.registro?.estado_claim || 'confirmada';
-    }
     return resultado.payload?.estado || resultado.registro?.estado || evento.payload?.estado || evento.estado_local;
   }
   return resultado.estado || 'conflicto';
+}
+
+function registroAsignacionResultado(resultado, evento, ahora) {
+  if (evento.entity !== 'asignacion_claim') return null;
+
+  const registroServidor = resultado.registro || resultado.payload || {};
+  const estadoClaim = estadoClaimResultado(resultado, evento);
+
+  return {
+    ...evento.payload,
+    ...registroServidor,
+    id: registroServidor.id || evento.payload.id,
+    idempotency_key: evento.idempotency_key,
+    estado_claim: estadoClaim,
+    updated_at: registroServidor.updated_at || ahora,
+    actualizado_en: ahora,
+    respuesta_sync: resultado,
+  };
 }
 
 export async function sincronizarOutbox() {
@@ -141,7 +166,7 @@ export async function sincronizarOutbox() {
       const resultados = respuesta.resultados || [];
       const ahora = ahoraIso();
 
-      await db.transaction('rw', db.outbox, async () => {
+      await db.transaction('rw', db.outbox, db.asignaciones, async () => {
         for (const resultado of resultados) {
           const evento = pendientes.find((item) => item.idempotency_key === resultado.idempotency_key);
           if (!evento) continue;
@@ -153,6 +178,9 @@ export async function sincronizarOutbox() {
             error: null,
             actualizado_en: ahora,
           });
+
+          const asignacion = registroAsignacionResultado(resultado, evento, ahora);
+          if (asignacion) await db.asignaciones.put(asignacion);
         }
       });
     }
